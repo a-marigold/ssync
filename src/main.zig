@@ -14,29 +14,31 @@ const HELP_TEXT =
     \\  delete [root, ?file]           If file specified, delete the 'file' in 'root'.
     \\                                 If only 'root' specified, delete the whole root (prompt is shown for safety).
     \\  update [root, newSource, dest] Make 'dest' in 'root' track 'newSource' instead of the current.
-    \\
-    \\flags: 
-    \\  --help
 ;
 pub fn main(init: std.process.Init.Minimal) !void {
-    const arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    var arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     const arenaAllocator = arena.allocator();
 
-    const threaded: Io.Threaded = .init(arenaAllocator, .{});
+    var threaded: Io.Threaded = .init(arenaAllocator, .{});
     const io = threaded.io();
 
-    const stderr = Io.File.stdout().writer().interface;
-    const args = try init.args.iterateAllocator(arenaAllocator);
+    var stderr = Io.File.stdout().writer(io, &.{});
+    const stderrWriter = &stderr.interface;
+
+    var args = try init.args.iterateAllocator(arenaAllocator);
 
     if (args.next()) |command| {
-        const stdout = try std.Io.File.stdout().writer(io, &.{});
-        _ = command;
-        _ = stdout;
+        var stdout = Io.File.stdout().writer(io, &.{});
+        const stdoutWriter = &stdout.interface;
+
+        if (std.mem.eql(u8, command, "--help")) {
+            try writeStdio(stdoutWriter, HELP_TEXT);
+        }
     } else {
-        writeStdio(stderr, Errors.UNKNOWN_CMD);
+        try writeStdio(stderrWriter, Errors.UNKNOWN_CMD);
     }
 }
 
-inline fn writeStdio(writer: *Io.Writer, data: []const u8) void {
-    _ = writer.vtable.drain(&.{data}, 1);
+inline fn writeStdio(writer: *Io.Writer, data: []const u8) !void {
+    _ = try writer.vtable.drain(writer, &.{data}, 1);
 }
