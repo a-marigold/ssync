@@ -9,6 +9,8 @@ const builtin = @import("builtin");
 const constants = @import("constants.zig");
 const utils = @import("utils.zig");
 
+const OS = builtin.os.tag;
+
 const Errors = constants.Errors;
 
 pub fn main(init: process.Init.Minimal) !void {
@@ -32,13 +34,13 @@ pub fn main(init: process.Init.Minimal) !void {
         const stdoutWriter = &stdout.interface;
 
         if (mem.eql(u8, command, "--help")) {
-            try utils.writeStdio(
-                stdoutWriter,
-            );
+            try utils.writeStdio(stdoutWriter, constants.HELP_TEXT);
 
             process.exit(0);
         } else if (mem.eql(u8, command, "list")) {
-            try Commands.list(arenaAllocator, io, environ);
+            const listOutput = try Commands.list(arenaAllocator, io, environ);
+
+            try utils.writeStdio(stdoutWriter, listOutput.items);
 
             process.exit(0);
         }
@@ -48,7 +50,7 @@ pub fn main(init: process.Init.Minimal) !void {
 }
 
 const Commands = struct {
-    pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !void {
+    pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !std.ArrayList(u8) {
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 600);
 
         var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
@@ -92,5 +94,7 @@ const Commands = struct {
                 try output.append(allocator, '\n');
             }
         }
+
+        return output;
     }
 };
