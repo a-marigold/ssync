@@ -51,7 +51,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
             process.exit(0);
         }
-        if (mem.eql(u8, command, "list")) {}
 
         var userDirPathBuffer: [MAX_PATH_LEN]u8 = undefined;
 
@@ -60,6 +59,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
         };
 
         _ = userDirPath;
+
+        if (mem.eql(u8, command, "list")) {}
     } else {
         try writeStdio(stderrWriter, Errors.UNKNOWN_CMD);
     }
@@ -92,6 +93,19 @@ inline fn getUserDirPath(
 
         return buffer[0..path.len];
     }
+}
+
+/// Inserts `literal` to `path` starting from `startIndex`.
+///
+/// `path[0..startIndex]` must not include slash, but `literal` must.
+///
+/// Returns a slice of `path[0..startIndex]` joined with `literal`.
+inline fn insertPathLiteral(path: [MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
+    const newPathLen = startIndex + literal.len;
+
+    @memcpy(path[startIndex..newPathLen], literal);
+
+    return path[0..newPathLen];
 }
 
 inline fn writeStdio(writer: *Io.Writer, data: []const u8) !void {
