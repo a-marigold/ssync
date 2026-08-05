@@ -12,6 +12,8 @@ const MAX_PATH_LEN = win.MAX_PATH;
 
 const Errors = struct {
     pub const UNKNOWN_CMD = "Unknown command. Use 'ssync --help'.";
+
+    pub const GET_USER_DIR_PATH_FAIL = "Failed to get the user dir path.";
 };
 const HELP_TEXT =
     \\commands:
@@ -53,7 +55,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
         var userDirPathBuffer: [MAX_PATH_LEN]u8 = undefined;
 
-        const userDirPath = getUserDirPath(environ, &userDirPathBuffer);
+        const userDirPath = getUserDirPath(environ, &userDirPathBuffer) orelse {
+            @panic(Errors.GET_USER_DIR_PATH_FAIL);
+        };
 
         _ = userDirPath;
     } else {
