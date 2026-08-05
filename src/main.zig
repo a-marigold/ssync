@@ -52,13 +52,63 @@ pub fn main(init: process.Init.Minimal) !void {
             try writeStdio(stdoutWriter, HELP_TEXT);
 
             process.exit(0);
-        }
+        } else if (mem.eql(u8, command, "list")) {
+            try Commands.list(arenaAllocator, io, environ);
 
-        if (mem.eql(u8, command, "list")) {}
+            process.exit(0);
+        }
     } else {
         try writeStdio(stderrWriter, Errors.UNKNOWN_CMD);
     }
 }
+
+const Commands = struct {
+    pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !void {
+        var output: std.ArrayList(u8) = try .initCapacity(allocator, 600);
+
+        var userDirPathBuffer: [MAX_PATH_LEN]u8 = undefined;
+        const userDirPathLen = try getUserDirPath(environ, &userDirPathBuffer);
+
+        const rootsDirPath = insertPathLiteral(
+            &userDirPathBuffer,
+            userDirPathLen,
+            if (OS == .linux) "/.local/share/ssync" else if (OS == .macos)
+                "/Library/Application Support"
+            else
+                "\\ssync",
+        );
+
+        try arrayAppendSlices(
+            allocator,
+            u8,
+            &output,
+            .{ "path to roots: ", rootsDirPath, "\n\ncreated roots:\n" },
+        );
+
+        const cwd = Io.Dir.cwd();
+
+        var roots = block: {
+            const rootsDir = try cwd.openDir(
+                io,
+                rootsDirPath,
+                .{ .iterate = true },
+            );
+            break :block rootsDir.iterate().reader;
+        };
+
+        while (try roots.next(io)) |root| {
+            if (root.kind == .directory) {
+                try arrayAppendSlices(
+                    allocator,
+                    u8,
+                    &output,
+                    .{ "  ", root.name },
+                );
+                try output.append(allocator, '\n');
+            }
+        }
+    }
+};
 
 const UserDirPathError = error{
     GetUserProfileEnvFail,
@@ -67,7 +117,6 @@ const UserDirPathError = error{
 
     GetHomeEnvFail,
 };
-
 /// Writes to `buffer` the path to user dir.
 ///
 /// Returns length of the path in `buffer` or `null` in case of error.
