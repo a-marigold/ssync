@@ -1,15 +1,12 @@
-const std = @import("std");
+pub const std = @import("std");
 const mem = std.mem;
 const heap = std.heap;
 const Io = std.Io;
 const process = std.process;
 const unicode = std.unicode;
-const win = std.os.windows;
 const builtin = @import("builtin");
 
-const OS = builtin.os.tag;
-
-const MAX_PATH_LEN = win.MAX_PATH;
+const utils = @import("utils.zig");
 
 const Errors = struct {
     pub const UNKNOWN_CMD = "Unknown command. Use 'ssync --help'.";
@@ -49,7 +46,7 @@ pub fn main(init: process.Init.Minimal) !void {
         const stdoutWriter = &stdout.interface;
 
         if (mem.eql(u8, command, "--help")) {
-            try writeStdio(stdoutWriter, HELP_TEXT);
+            try utils.writeStdio(stdoutWriter, HELP_TEXT);
 
             process.exit(0);
         } else if (mem.eql(u8, command, "list")) {
@@ -58,7 +55,7 @@ pub fn main(init: process.Init.Minimal) !void {
             process.exit(0);
         }
     } else {
-        try writeStdio(stderrWriter, Errors.UNKNOWN_CMD);
+        try utils.writeStdio(stderrWriter, Errors.UNKNOWN_CMD);
     }
 }
 
@@ -66,10 +63,10 @@ const Commands = struct {
     pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !void {
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 600);
 
-        var userDirPathBuffer: [MAX_PATH_LEN]u8 = undefined;
-        const userDirPathLen = try getUserDirPath(environ, &userDirPathBuffer);
+        var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
+        const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
 
-        const rootsDirPath = insertPathLiteral(
+        const rootsDirPath = utils.insertPathLiteral(
             &userDirPathBuffer,
             userDirPathLen,
             if (OS == .linux) "/.local/share/ssync" else if (OS == .macos)
@@ -78,7 +75,7 @@ const Commands = struct {
                 "\\ssync",
         );
 
-        try arrayAppendSlices(
+        try utils.arrayAppendSlices(
             allocator,
             u8,
             &output,
@@ -98,7 +95,7 @@ const Commands = struct {
 
         while (try roots.next(io)) |root| {
             if (root.kind == .directory) {
-                try arrayAppendSlices(
+                try utils.arrayAppendSlices(
                     allocator,
                     u8,
                     &output,
@@ -109,75 +106,3 @@ const Commands = struct {
         }
     }
 };
-
-const UserDirPathError = error{
-    GetUserProfileEnvFail,
-
-    ConvertPathToUtf8Fail,
-
-    GetHomeEnvFail,
-};
-/// Writes to `buffer` the path to user dir.
-///
-/// Returns length of the path in `buffer` or `null` in case of error.
-inline fn getUserDirPath(
-    /// `process.Environ` from which to read the user dir path.
-    environ: process.Environ,
-    buffer: *[MAX_PATH_LEN]u8,
-) UserDirPathError!usize {
-    if (OS == .windows) {
-        const utf16Path = environ.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
-            return UserDirPathError.GetUserProfileEnvFail;
-        };
-
-        const utf8PathLen = unicode.utf16LeToUtf8(buffer, utf16Path) catch {
-            return UserDirPathError.ConvertPathToUtf8Fail;
-        };
-
-        return utf8PathLen;
-    } else {
-        const path = environ.getPosix("$HOME") orelse {
-            return UserDirPathError.GetHomeEnvFail;
-        };
-        const pathLen = path.len;
-
-        @memcpy(buffer[0..pathLen], path);
-
-        return pathLen;
-    }
-}
-
-/// Inserts `literal` to `path` starting from `startIndex`.
-///
-/// `path[0..startIndex]` must not include trailing slash, but `literal` must start with slash.
-///
-/// Returns a slice of `path[0..startIndex]` joined with `literal`.
-inline fn insertPathLiteral(path: *[MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
-    const insertionStart = startIndex + 1;
-    const newPathLen = insertionStart + literal.len;
-
-    @memcpy(path[insertionStart..newPathLen], literal);
-
-    return path[0..newPathLen];
-}
-
-/// Appends every slice of `slices` to `array`.
-inline fn arrayAppendSlices(
-    allocator: mem.Allocator,
-    comptime T: type,
-    array: *std.ArrayList(T),
-    slices: anytype,
-) !void {
-    inline for (slices) |slice| {
-        try array.appendSlice(allocator, slice);
-    }
-}
-
-/// Used with unbuffered stdio.
-inline fn writeStdio(writer: *Io.Writer, data: []const u8) !void {
-    _ = try writer.vtable.drain(writer, &.{data}, 1);
-}
-
-inline fn getUtf16Literal(comptime utf8Literal: []const u8) []const u16 {
-    return comptime std.unicode.utf8ToUtf16LeStringLiteral(utf8Literal);
-}
