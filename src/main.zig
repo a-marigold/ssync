@@ -1,5 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
+const heap = std.heap;
 const Io = std.Io;
 const process = std.process;
 const unicode = std.unicode;
@@ -15,6 +16,7 @@ const Errors = struct {
 
     pub const GET_USER_DIR_PATH_FAIL = "Failed to get the user dir path.";
 };
+
 const HELP_TEXT =
     \\commands:
     \\  list                           List the created roots and paths to them in the system.
@@ -26,10 +28,10 @@ const HELP_TEXT =
     \\  update [root, newSource, dest] Make 'dest' in 'root' track 'newSource' instead of the current.
 ;
 
-pub fn main(init: std.process.Init.Minimal) !void {
+pub fn main(init: process.Init.Minimal) !void {
     const environ = init.environ;
 
-    var arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    var arena: heap.ArenaAllocator = .init(heap.page_allocator);
     const arenaAllocator = arena.allocator();
 
     var threaded: Io.Threaded = .init(arenaAllocator, .{});
@@ -52,62 +54,77 @@ pub fn main(init: std.process.Init.Minimal) !void {
             process.exit(0);
         }
 
-        var userDirPathBuffer: [MAX_PATH_LEN]u8 = undefined;
-
-        const userDirPath = getUserDirPath(environ, &userDirPathBuffer) orelse {
-            @panic(Errors.GET_USER_DIR_PATH_FAIL);
-        };
-
-        _ = userDirPath;
-
         if (mem.eql(u8, command, "list")) {}
     } else {
         try writeStdio(stderrWriter, Errors.UNKNOWN_CMD);
     }
 }
 
+const UserDirPathError = error{
+    GetUserProfileEnvFail,
+
+    ConvertPathToUtf8Fail,
+
+    GetHomeEnvFail,
+};
+
 /// Writes to `buffer` the path to user dir.
 ///
-/// Returns a slice of `buffer` with length of the path or `null` in case of error.
+/// Returns length of the path in `buffer` or `null` in case of error.
 inline fn getUserDirPath(
     /// `process.Environ` from which to read the user dir path.
     environ: process.Environ,
     buffer: *[MAX_PATH_LEN]u8,
-) ?[]const u8 {
+) UserDirPathError!usize {
     if (OS == .windows) {
         const utf16Path = environ.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
-            return null;
+            return UserDirPathError.GetUserProfileEnvFail;
         };
 
         const utf8PathLen = unicode.utf16LeToUtf8(buffer, utf16Path) catch {
-            return null;
+            return UserDirPathError.ConvertPathToUtf8Fail;
         };
 
-        return buffer[0..utf8PathLen];
+        return utf8PathLen;
     } else {
         const path = environ.getPosix("$HOME") orelse {
-            return null;
+            return UserDirPathError.GetHomeEnvFail;
         };
+        const pathLen = path.len;
 
-        @memcpy(buffer[0..path.len], path);
+        @memcpy(buffer[0..pathLen], path);
 
-        return buffer[0..path.len];
+        return pathLen;
     }
 }
 
 /// Inserts `literal` to `path` starting from `startIndex`.
 ///
-/// `path[0..startIndex]` must not include slash, but `literal` must.
+/// `path[0..startIndex]` must not include trailing slash, but `literal` must start with slash.
 ///
 /// Returns a slice of `path[0..startIndex]` joined with `literal`.
-inline fn insertPathLiteral(path: [MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
-    const newPathLen = startIndex + literal.len;
+inline fn insertPathLiteral(path: *[MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
+    const insertionStart = startIndex + 1;
+    const newPathLen = insertionStart + literal.len;
 
-    @memcpy(path[startIndex..newPathLen], literal);
+    @memcpy(path[insertionStart..newPathLen], literal);
 
     return path[0..newPathLen];
 }
 
+/// Appends every slice of `slices` to `array`.
+inline fn arrayAppendSlices(
+    allocator: mem.Allocator,
+    comptime T: type,
+    array: *std.ArrayList(T),
+    slices: anytype,
+) !void {
+    inline for (slices) |slice| {
+        try array.appendSlice(allocator, slice);
+    }
+}
+
+/// Used with unbuffered stdio.
 inline fn writeStdio(writer: *Io.Writer, data: []const u8) !void {
     _ = try writer.vtable.drain(writer, &.{data}, 1);
 }
