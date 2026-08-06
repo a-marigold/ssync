@@ -19,33 +19,28 @@ pub fn main(init: process.Init.Minimal) !void {
     var threaded: Io.Threaded = .init(arenaAllocator, .{});
     const io = threaded.io();
 
-    // Empty slice for unbuffered io
-    var stderr = Io.File.stdout().writer(io, &.{});
-    stderr.mode = stderr.mode.toStreaming();
-    const stderrWriter = &stderr.interface;
+    var stderr: utils.StdIo = .init(io, .Stderr);
 
     var args = try init.args.iterateAllocator(arenaAllocator);
+
     _ = args.skip();
 
     if (args.next()) |cmd| {
-        // Empty slice for unbuffered io
-        var stdout = Io.File.stdout().writer(io, &.{});
-        stdout.mode = stdout.mode.toStreaming();
-        const stdoutWriter = &stdout.interface;
+        var stdout: utils.StdIo = .init(io, .Stdout);
 
         if (mem.eql(u8, cmd, "--help")) {
-            try utils.writeStdio(stdoutWriter, Commands.help());
+            try stdout.write(Commands.help());
 
             process.exit(0);
         } else if (mem.eql(u8, cmd, "list")) {
             const listOutput = try Commands.list(arenaAllocator, io, environ);
 
-            try utils.writeStdio(stdoutWriter, listOutput.items);
+            try stdout.write(listOutput.items);
 
             process.exit(0);
         }
     } else {
-        try utils.writeStdio(stderrWriter, Commands.help());
+        try stderr.write(Commands.help());
     }
 }
 

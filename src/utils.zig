@@ -71,12 +71,31 @@ pub inline fn arrayAppendSlices(
     }
 }
 
-/// Used with unbuffered stdio.
-///
-/// Writer MUST be in `streaming` mode, not `positional`.
-pub inline fn writeStdio(writer: *Io.Writer, data: []const u8) !void {
-    _ = try writer.vtable.drain(writer, &.{data}, 1);
-}
+/// High-level wrapper over unbufferred, streaming `stdout` or `stderr` from zig std.
+pub const StdIo = struct {
+    stdio: Io.File.Writer,
+
+    pub inline fn init(io: Io, comptime stdioType: enum { Stdout, Stderr }) @This() {
+        var stdio: Io.File.Writer = switch (stdioType) {
+            .Stdout => Io.File.stdout(),
+
+            .Stderr => Io.File.stderr(),
+        }.writer(io, &.{}); // Empty slice means unbuffered
+
+        // If it is not done, the first call of `stdioWriter.vtable.drain`
+        // (which is in `StdIo.print`) ends with error and turns the `mode` to `streaming` on its own
+        stdio.mode = stdio.mode.toStreaming();
+
+        return .{ .stdio = stdio };
+    }
+
+    /// Outputs `data` to `stdout` or `stderr`.
+    pub inline fn write(self: *@This(), data: []const u8) !void {
+        const writer = @constCast(&self.stdio.interface);
+
+        _ = try writer.vtable.drain(writer, &.{data}, 1);
+    }
+};
 
 pub inline fn getUtf16Literal(comptime utf8Literal: []const u8) []const u16 {
     return comptime std.unicode.utf8ToUtf16LeStringLiteral(utf8Literal);
