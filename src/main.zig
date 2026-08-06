@@ -25,15 +25,16 @@ pub fn main(init: process.Init.Minimal) !void {
 
     // Empty slice for unbuffered io
     var stderr = Io.File.stdout().writer(io, &.{});
+    stderr.mode = stderr.mode.toStreaming();
     const stderrWriter = &stderr.interface;
 
     var args = try init.args.iterateAllocator(arenaAllocator);
-
     _ = args.skip();
 
     if (args.next()) |cmd| {
         // Empty slice for unbuffered io
         var stdout = Io.File.stdout().writer(io, &.{});
+        stdout.mode = stdout.mode.toStreaming();
         const stdoutWriter = &stdout.interface;
 
         if (mem.eql(u8, cmd, "--help")) {

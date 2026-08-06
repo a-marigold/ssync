@@ -72,6 +72,8 @@ pub inline fn arrayAppendSlices(
 }
 
 /// Used with unbuffered stdio.
+///
+/// Writer MUST be in `streaming` mode, not `positional`.
 pub inline fn writeStdio(writer: *Io.Writer, data: []const u8) !void {
     _ = try writer.vtable.drain(writer, &.{data}, 1);
 }
