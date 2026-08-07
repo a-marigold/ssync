@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const heap = std.heap;
 const Io = std.Io;
+const Dir = Io.Dir;
 const process = std.process;
 const unicode = std.unicode;
 const builtin = @import("builtin");
@@ -69,13 +70,9 @@ const Commands = struct {
         var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
         const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
 
-        const rootsDirPath = utils.insertPathLiteral(
-            &userDirPathBuffer,
+        const rootsDirPath = Commands.userDirPathToRootsDirPath(
+            userDirPathBuffer,
             userDirPathLen,
-            if (OS == .linux) "/.local/share/ssync" else if (OS == .macos)
-                "/Library/Application Support"
-            else
-                "\\ssync",
         );
 
         try utils.arrayAppendSlices(
@@ -85,7 +82,7 @@ const Commands = struct {
             .{ "path to roots: ", rootsDirPath, "\n\ncreated roots:\n" },
         );
 
-        const cwd = Io.Dir.cwd();
+        const cwd = Dir.cwd();
 
         var roots = block: {
             const rootsDir = try cwd.openDir(
@@ -109,5 +106,26 @@ const Commands = struct {
         }
 
         return output;
+    }
+
+    /// Inserts a platfrom-specific relative path of the roots dir to
+    /// `pathBuffer` starting from `userPathEnd`.
+    ///
+    /// `pathBuffer[0..userPathEnd]` must not include trailing slash.
+    ///
+    /// Returns a slice of the real roots dir path.
+    inline fn userDirPathToRootsDirPath(
+        pathBuffer: [utils.MAX_PATH_LEN]u8,
+        userPathLen: usize,
+    ) []const u8 {
+        return utils.insertPathLiteral(
+            &pathBuffer,
+            userPathLen,
+            switch (OS) {
+                .linux => "/.local/share/ssync",
+                .macos => "/Library/Application Support/ssync",
+                .windows => "\\ssync",
+            },
+        );
     }
 };

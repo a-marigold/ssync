@@ -8,7 +8,7 @@ const builtin = @import("builtin");
 const OS = builtin.os.tag;
 
 /// Assume it is enough.
-pub const MAX_PATH_LEN = std.os.windows.MAX_PATH;
+pub const MAX_PATH_LEN = Io.Dir.max_path_bytes / 8;
 
 pub const UserDirPathError = error{
     GetUserProfileEnvFail,
