@@ -13,7 +13,6 @@ const OS = builtin.os.tag;
 
 pub fn main(init: process.Init.Minimal) !void {
     const environ = init.environ;
-
     var arena: heap.ArenaAllocator = .init(heap.page_allocator);
     const arenaAllocator = arena.allocator();
 
@@ -50,9 +49,9 @@ const Commands = struct {
     pub inline fn help() []const u8 {
         return
         \\commands:
-        \\  list                           List created roots and path to them in the system.
+        \\  list                           Get path to the config, path to roots and all created roots.
         \\
-        \\  add [root, source, dest]       'root' is name of a root folder to copy 'source' file to. Root is created if does not exit.
+        \\  add [root, source, dest]       'root' is name of a root to copy 'source' file to. Root is created if does not exit.
         \\                                 'source' is path to a file in the system which is to be copied to 'dest'.
         \\                                 'dest' is a path relative to 'root' to copy 'source' to.
         \\
@@ -64,43 +63,57 @@ const Commands = struct {
         ;
     }
 
+    /// Returns output of the command.
     pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !std.ArrayList(u8) {
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 600);
 
         var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
         const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
 
-        const rootsDirPath = Commands.userDirPathToRootsDirPath(
+        const rootsDirPath = userDirPathToRootsDirPath(
             userDirPathBuffer,
             userDirPathLen,
         );
 
-        try utils.arrayAppendSlices(
-            allocator,
-            u8,
-            &output,
-            .{ "path to roots: ", rootsDirPath, "\n\ncreated roots:\n" },
-        );
+        try output.appendSlice(allocator, "path to roots: ");
+        try output.appendSlice(allocator, rootsDirPath);
+        try output.append(allocator, '\n');
+        try output.append(allocator, '\n');
 
         const cwd = Dir.cwd();
 
         var roots = block: {
-            const rootsDir = try cwd.openDir(
+            const rootsDir = cwd.openDir(
                 io,
                 rootsDirPath,
                 .{ .iterate = true },
-            );
+            ) catch |err| {
+                if (err == Dir.OpenError.FileNotFound) {
+                    try cwd.createDir(
+                        io,
+                        rootsDirPath,
+                        if (OS == .windows)
+                            Dir.Permissions.default_dir
+                        else
+                            Dir.Permissions.default_dir,
+                    );
+
+                    try output.appendSlice(allocator, "no root created yet");
+                }
+
+                return err;
+            };
+
             break :block rootsDir.iterate().reader;
         };
 
+        try output.appendSlice(allocator, "created roots:\n");
+
         while (try roots.next(io)) |root| {
             if (root.kind == .directory) {
-                try utils.arrayAppendSlices(
-                    allocator,
-                    u8,
-                    &output,
-                    .{ "  ", root.name },
-                );
+                try output.append(allocator, ' ');
+                try output.append(allocator, ' ');
+                try output.appendSlice(allocator, root.name);
                 try output.append(allocator, '\n');
             }
         }
@@ -116,11 +129,11 @@ const Commands = struct {
     /// Returns a slice of the real roots dir path.
     inline fn userDirPathToRootsDirPath(
         pathBuffer: [utils.MAX_PATH_LEN]u8,
-        userPathLen: usize,
+        userDirPathLen: usize,
     ) []const u8 {
         return utils.insertPathLiteral(
             &pathBuffer,
-            userPathLen,
+            userDirPathLen,
             switch (OS) {
                 .linux => "/.local/share/ssync",
                 .macos => "/Library/Application Support/ssync",
