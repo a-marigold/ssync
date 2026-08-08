@@ -51,11 +51,9 @@ pub inline fn getUserDirPath(
 ///
 /// Returns a slice of `path[0..startIndex]` joined with `literal`.
 pub inline fn insertPathLiteral(pathBuffer: *[MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
-    // TODO: fix
-    const insertionStart = startIndex + 1;
-    const newPathLen = insertionStart + literal.len;
+    const newPathLen = startIndex + literal.len;
 
-    @memcpy(pathBuffer[insertionStart..newPathLen], literal);
+    @memcpy(pathBuffer[startIndex..newPathLen], literal);
 
     return pathBuffer[0..newPathLen];
 }
