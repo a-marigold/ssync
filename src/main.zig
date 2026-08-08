@@ -41,6 +41,8 @@ pub fn main(init: process.Init.Minimal) !void {
         }
     } else {
         try stderr.write(Commands.help());
+
+        process.exit(0);
     }
 }
 
@@ -66,9 +68,8 @@ const Commands = struct {
 
     /// Returns output of the command.
     pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !std.ArrayList(u8) {
-        // TODO: capacity is too large
-
-        var output: std.ArrayList(u8) = try .initCapacity(allocator, 600);
+        // The number 170 is given after profiling
+        var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
         const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
@@ -84,7 +85,7 @@ const Commands = struct {
             break :block getConfigPath(userDirPathBuffer[0..userDirPathLen], &buffer);
         };
 
-        try output.appendSlice(allocator, "Config is at: ");
+        try output.appendSlice(allocator, "Config should be located at: ");
         try output.appendSlice(allocator, configPath);
         try output.append(allocator, '\n');
 
