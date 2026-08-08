@@ -66,6 +66,8 @@ const Commands = struct {
 
     /// Returns output of the command.
     pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !std.ArrayList(u8) {
+        // TODO: capacity is too large
+
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 600);
 
         var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
@@ -77,7 +79,16 @@ const Commands = struct {
             userDirPathLen,
         );
 
-        const noRootCreatedMsg = "No root created yet\n";
+        const configPath = block: {
+            var buffer: [utils.MAX_PATH_LEN]u8 = undefined;
+            break :block getConfigPath(userDirPathBuffer[0..userDirPathLen], &buffer);
+        };
+
+        try output.appendSlice(allocator, "Config is at: ");
+        try output.appendSlice(allocator, configPath);
+        try output.append(allocator, '\n');
+
+        const noRootCreatedMsg = "\nNo root created yet\n";
 
         const cwd = Dir.cwd();
 
@@ -107,10 +118,8 @@ const Commands = struct {
 
         try output.appendSlice(allocator, "Roots are located in: ");
         try output.appendSlice(allocator, rootsDirPath);
-        try output.append(allocator, '\n');
-        try output.append(allocator, '\n');
 
-        try output.appendSlice(allocator, "created roots:\n");
+        try output.appendSlice(allocator, "\n\nCreatedRoots:\n");
 
         while (currentRoot) |root| : (currentRoot = try roots.next(io)) {
             if (root.kind == .directory) {
@@ -141,7 +150,6 @@ const Commands = struct {
                 .linux => "/.local/share/ssync",
                 .macos => "/Library/Application Support/ssync",
                 .windows => "\\ssync",
-
                 else => unreachable,
             },
         );
@@ -150,16 +158,17 @@ const Commands = struct {
     /// Copies `userDirPath` to `outBuffer` and appends there path to config.
     ///
     /// Returns a slice of the real config path in `outBuffer`.
-    inline fn getConfigPath(userDirPath: []const u8, outBuffer: []u8) []const u8 {
-        @memcpy(outBuffer[0..userDirPath.len], userDirPath);
+    inline fn getConfigPath(userDirPath: []const u8, buffer: *[utils.MAX_PATH_LEN]u8) []const u8 {
+        @memcpy(buffer[0..userDirPath.len], userDirPath);
 
-        utils.insertPathLiteral(
-            &outBuffer,
+        return utils.insertPathLiteral(
+            buffer,
             userDirPath.len,
             switch (OS) {
                 .linux => "/.config/ssync.toml",
                 .macos => "/Library/Application Support/ssync/ssync.toml",
                 .windows => "\\ssync\\ssync.toml",
+                else => unreachable,
             },
         );
     }
