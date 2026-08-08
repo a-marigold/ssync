@@ -45,15 +45,19 @@ pub inline fn getUserDirPath(
     }
 }
 
-/// Inserts `literal` to `path` starting from `startIndex`.
+/// Simply inserts `component` to `path` starting from `startIndex`, without resolving relativness.
 ///
-/// `path[0..startIndex]` must not include trailing slash, but `literal` must start with slash.
+/// `path[0..startIndex]` must not include trailing slash, but `component` must start with slash.
 ///
-/// Returns a slice of `path[0..startIndex]` joined with `literal`.
-pub inline fn insertPathLiteral(pathBuffer: *[MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
-    const newPathLen = startIndex + literal.len;
+/// Returns a slice in `pathBuffer` of the result.
+pub inline fn insertPathComponent(
+    pathBuffer: *[MAX_PATH_LEN]u8,
+    startIndex: usize,
+    component: []const u8,
+) []const u8 {
+    const newPathLen = startIndex + component.len;
 
-    @memcpy(pathBuffer[startIndex..newPathLen], literal);
+    @memcpy(pathBuffer[startIndex..newPathLen], component);
 
     return pathBuffer[0..newPathLen];
 }
