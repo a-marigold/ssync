@@ -73,6 +73,7 @@ const Commands = struct {
 
         const rootsDirPath = userDirPathToRootsDirPath(
             &userDirPathBuffer,
+
             userDirPathLen,
         );
 
@@ -110,6 +111,7 @@ const Commands = struct {
         try output.append(allocator, '\n');
 
         try output.appendSlice(allocator, "created roots:\n");
+
         while (currentRoot) |root| : (currentRoot = try roots.next(io)) {
             if (root.kind == .directory) {
                 try output.append(allocator, ' ');
@@ -141,6 +143,23 @@ const Commands = struct {
                 .windows => "\\ssync",
 
                 else => unreachable,
+            },
+        );
+    }
+
+    /// Copies `userDirPath` to `outBuffer` and appends there path to config.
+    ///
+    /// Returns a slice of the real config path in `outBuffer`.
+    inline fn getConfigPath(userDirPath: []const u8, outBuffer: []u8) []const u8 {
+        @memcpy(outBuffer[0..userDirPath.len], userDirPath);
+
+        utils.insertPathLiteral(
+            &outBuffer,
+            userDirPath.len,
+            switch (OS) {
+                .linux => "/.config/ssync.toml",
+                .macos => "/Library/Application Support/ssync/ssync.toml",
+                .windows => "\\ssync\\ssync.toml",
             },
         );
     }

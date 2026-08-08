@@ -50,13 +50,14 @@ pub inline fn getUserDirPath(
 /// `path[0..startIndex]` must not include trailing slash, but `literal` must start with slash.
 ///
 /// Returns a slice of `path[0..startIndex]` joined with `literal`.
-pub inline fn insertPathLiteral(path: *[MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
+pub inline fn insertPathLiteral(pathBuffer: *[MAX_PATH_LEN]u8, startIndex: usize, comptime literal: []const u8) []const u8 {
+    // TODO: fix
     const insertionStart = startIndex + 1;
     const newPathLen = insertionStart + literal.len;
 
-    @memcpy(path[insertionStart..newPathLen], literal);
+    @memcpy(pathBuffer[insertionStart..newPathLen], literal);
 
-    return path[0..newPathLen];
+    return pathBuffer[0..newPathLen];
 }
 
 /// Appends every slice of `slices` to `array`.
