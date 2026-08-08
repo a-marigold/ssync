@@ -49,11 +49,12 @@ const Commands = struct {
     pub inline fn help() []const u8 {
         return
         \\commands:
-        \\  list                           Get path to the config, path to roots and all created roots.
+        \\  list                           Show path to the config, path to roots and all created roots.
         \\
-        \\  add [root, source, dest]       'root' is name of a root to copy 'source' file to. Root is created if does not exit.
+        \\  add [root, ?source, ?dest]     'root' is name of a root to copy 'source' file to.
         \\                                 'source' is path to a file in the system which is to be copied to 'dest'.
         \\                                 'dest' is a path relative to 'root' to copy 'source' to.
+        \\                                 If 'source' and 'dest' are not specified, just root is created.
         \\
         \\  delete [root, ?file]           If 'file' specified, delete the 'file' in 'root'.
         \\                                 If only 'file' is not specified, delete the whole root (prompt is shown for safety).
@@ -75,12 +76,14 @@ const Commands = struct {
             userDirPathLen,
         );
 
-        try output.appendSlice(allocator, "path to roots: ");
+        try output.appendSlice(allocator, "roots are located on: ");
         try output.appendSlice(allocator, rootsDirPath);
         try output.append(allocator, '\n');
         try output.append(allocator, '\n');
 
         const cwd = Dir.cwd();
+
+        const noRootCreatedMsg = "no root created yet\n";
 
         var roots = block: {
             const rootsDir = cwd.openDir(
@@ -89,16 +92,7 @@ const Commands = struct {
                 .{ .iterate = true },
             ) catch |err| {
                 if (err == Dir.OpenError.FileNotFound) {
-                    try cwd.createDir(
-                        io,
-                        rootsDirPath,
-                        if (OS == .windows)
-                            Dir.Permissions.default_dir
-                        else
-                            Dir.Permissions.default_dir,
-                    );
-
-                    try output.appendSlice(allocator, "no root created yet");
+                    try output.appendSlice(allocator, noRootCreatedMsg);
                 }
 
                 return err;
@@ -107,9 +101,14 @@ const Commands = struct {
             break :block rootsDir.iterate().reader;
         };
 
-        try output.appendSlice(allocator, "created roots:\n");
+        var currentRoot: ?Dir.Entry = try roots.next() orelse {
+            try output.appendSlice(allocator, noRootCreatedMsg);
 
-        while (try roots.next(io)) |root| {
+            return output;
+        };
+
+        try output.appendSlice(allocator, "created roots:\n");
+        while (currentRoot) |root| : (currentRoot = try roots.next()) {
             if (root.kind == .directory) {
                 try output.append(allocator, ' ');
                 try output.append(allocator, ' ');
@@ -121,7 +120,7 @@ const Commands = struct {
         return output;
     }
 
-    /// Inserts a platfrom-specific relative path of the roots dir to
+    /// Inserts a platfrom-specific relative path to the roots dir to
     /// `pathBuffer` starting from `userPathEnd`.
     ///
     /// `pathBuffer[0..userPathEnd]` must not include trailing slash.
