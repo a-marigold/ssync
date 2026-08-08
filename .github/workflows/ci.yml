@@ -20,4 +20,4 @@ jobs:
 
       - name: build
 
-        run: zig-build
+        run: zig build
