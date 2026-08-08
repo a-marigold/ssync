@@ -72,18 +72,13 @@ const Commands = struct {
         const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
 
         const rootsDirPath = userDirPathToRootsDirPath(
-            userDirPathBuffer,
+            &userDirPathBuffer,
             userDirPathLen,
         );
 
-        try output.appendSlice(allocator, "roots are located on: ");
-        try output.appendSlice(allocator, rootsDirPath);
-        try output.append(allocator, '\n');
-        try output.append(allocator, '\n');
+        const noRootCreatedMsg = "No root created yet\n";
 
         const cwd = Dir.cwd();
-
-        const noRootCreatedMsg = "no root created yet\n";
 
         var roots = block: {
             const rootsDir = cwd.openDir(
@@ -93,6 +88,8 @@ const Commands = struct {
             ) catch |err| {
                 if (err == Dir.OpenError.FileNotFound) {
                     try output.appendSlice(allocator, noRootCreatedMsg);
+
+                    return output;
                 }
 
                 return err;
@@ -101,14 +98,19 @@ const Commands = struct {
             break :block rootsDir.iterate().reader;
         };
 
-        var currentRoot: ?Dir.Entry = try roots.next() orelse {
+        var currentRoot: ?Dir.Entry = try roots.next(io) orelse {
             try output.appendSlice(allocator, noRootCreatedMsg);
 
             return output;
         };
 
+        try output.appendSlice(allocator, "Roots are located in: ");
+        try output.appendSlice(allocator, rootsDirPath);
+        try output.append(allocator, '\n');
+        try output.append(allocator, '\n');
+
         try output.appendSlice(allocator, "created roots:\n");
-        while (currentRoot) |root| : (currentRoot = try roots.next()) {
+        while (currentRoot) |root| : (currentRoot = try roots.next(io)) {
             if (root.kind == .directory) {
                 try output.append(allocator, ' ');
                 try output.append(allocator, ' ');
@@ -127,16 +129,18 @@ const Commands = struct {
     ///
     /// Returns a slice of the real roots dir path.
     inline fn userDirPathToRootsDirPath(
-        pathBuffer: [utils.MAX_PATH_LEN]u8,
+        pathBuffer: *[utils.MAX_PATH_LEN]u8,
         userDirPathLen: usize,
     ) []const u8 {
         return utils.insertPathLiteral(
-            &pathBuffer,
+            pathBuffer,
             userDirPathLen,
             switch (OS) {
                 .linux => "/.local/share/ssync",
                 .macos => "/Library/Application Support/ssync",
                 .windows => "\\ssync",
+
+                else => unreachable,
             },
         );
     }
