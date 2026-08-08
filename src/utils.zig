@@ -34,7 +34,7 @@ pub inline fn getUserDirPath(
 
         return utf8PathLen;
     } else {
-        const path = environ.getPosix("$HOME") orelse {
+        const path = environ.getPosix("HOME") orelse {
             return UserDirPathError.GetHomeEnvFail;
         };
         const pathLen = path.len;
