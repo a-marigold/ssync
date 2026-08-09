@@ -7,21 +7,23 @@ const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
 
-/// Assume it is enough.
-pub const MAX_PATH_LEN = Io.Dir.max_path_bytes / 8;
+pub const MAX_PATH_BYTES = Io.Dir.max_path_bytes;
 
 pub const UserDirPathError = error{
     GetUserProfileEnvFail,
+
+    /// Only on windows.
     ConvertPathToUtf8Fail,
     GetHomeEnvFail,
 };
+
 /// Writes to `buffer` the path to user dir.
 ///
 /// Returns length of the path in `buffer` or `null` in case of error.
 pub inline fn getUserDirPath(
     /// `process.Environ` from which to read the user dir path.
     environ: process.Environ,
-    buffer: *[MAX_PATH_LEN]u8,
+    buffer: *[MAX_PATH_BYTES]u8,
 ) UserDirPathError!usize {
     if (OS == .windows) {
         const utf16Path = environ.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
@@ -51,7 +53,7 @@ pub inline fn getUserDirPath(
 ///
 /// Returns a slice in `pathBuffer` of the result.
 pub inline fn insertPathComponent(
-    pathBuffer: *[MAX_PATH_LEN]u8,
+    pathBuffer: *[MAX_PATH_BYTES]u8,
     startIndex: usize,
     component: []const u8,
 ) []const u8 {
