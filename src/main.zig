@@ -28,11 +28,14 @@ pub fn main(init: process.Init.Minimal) !void {
     if (args.next()) |cmd| {
         var stdout: utils.StdIo = .init(io, .Stdout);
 
-        if (mem.eql(u8, cmd, "--help")) {
+        const eqlCmd = Commands.eqlCmd;
+
+        if (eqlCmd(cmd, "--help")) {
             try stdout.write(Commands.help());
 
             process.exit(0);
-        } else if (mem.eql(u8, cmd, "list")) {
+        }
+        if (eqlCmd(cmd, "list")) {
             const listOutput = try Commands.list(arenaAllocator, io, environ);
 
             try stdout.write(listOutput.items);
@@ -49,6 +52,11 @@ pub fn main(init: process.Init.Minimal) !void {
 /// The CLI commands.
 const Commands = struct {
     const MAX_ROOT_NAME_BYTES = 60;
+
+    /// Compares `a` and `b` command names.
+    inline fn eqlCmd(a: []const u8, b: []const u8) bool {
+        return mem.eql(u8, a, b);
+    }
 
     pub inline fn help() []const u8 {
         return
