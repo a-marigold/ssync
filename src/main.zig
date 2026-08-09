@@ -39,11 +39,11 @@ pub fn main(init: process.Init.Minimal) !void {
 
             process.exit(0);
         }
-    } else {
-        try stderr.write(Commands.help());
-
-        process.exit(0);
     }
+
+    try stderr.write(Commands.help());
+
+    process.exit(1);
 }
 
 /// The CLI commands.
@@ -70,13 +70,13 @@ const Commands = struct {
 
     /// Returns output of the command.
     pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !std.ArrayList(u8) {
-        // The number 170 is given after profiling
+        // Capacity 170 is enough for most cases
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
         const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
 
-        const rootsDirPath = userDirPathToRootsDirPath(
+        const rootsDirPath = getRootsDirPath(
             &userDirPathBuffer,
 
             userDirPathLen,
@@ -127,28 +127,69 @@ const Commands = struct {
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config located in one dir,
             // so check is it a dir (root)
-            if (entry.kind == .directory) {
-                try output.append(allocator, ' ');
-                try output.append(allocator, ' ');
-                try output.appendSlice(allocator, entry.name);
-                try output.append(allocator, '\n');
+            if ((comptime OS != .linux) and entry.kind != .directory) {
+                continue;
             }
+
+            try output.append(allocator, ' ');
+            try output.append(allocator, ' ');
+            try output.appendSlice(allocator, entry.name);
+            try output.append(allocator, '\n');
         }
 
         return output;
     }
 
+    const CreateError = error{ RootAlreadyExists, CreateDirFail };
+    pub inline fn create(
+        io: Io,
+        environ: process.Environ,
+        rootName: []const u8,
+    ) (CreateError || utils.UserDirPathError || RootPathError)!void {
+        var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
+        const userDirPathLen = try utils.getUserDirPath(
+            environ,
+            &userDirPathBuffer,
+        );
+
+        const rootPath = block: {
+            const rootsDirPath = getRootsDirPath(
+                &userDirPathBuffer,
+                userDirPathLen,
+            );
+
+            break :block try getRootPath(
+                &userDirPathBuffer,
+                rootsDirPath.len,
+                rootName,
+            );
+        };
+
+        const cwd = Dir.cwd();
+        cwd.createDir(
+            io,
+            rootPath,
+            Dir.Permissions.default_dir,
+        ) catch |err| {
+            if (err == Dir.CreateDirError.PathAlreadyExists) {
+                return CreateError.RootAlreadyExists;
+            }
+
+            return CreateError.CreateDirFail;
+        };
+    }
+
     /// Inserts a platfrom-specific relative
-    /// path to the roots dir to `pathBuffer` starting from `userPathEnd`.
+    /// path of the roots dir to `pathBuffer` starting from `userDirPathLen`
     ///
-    /// `pathBuffer[0..userPathEnd]` must not include trailing slash.
+    /// `userDirPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full roots dir path.
-    inline fn userDirPathToRootsDirPath(
+    inline fn getRootsDirPath(
         pathBuffer: *[utils.MAX_PATH_BYTES]u8,
         userDirPathLen: usize,
     ) []const u8 {
-        return utils.insertPathLiteral(
+        return utils.insertPathComponent(
             pathBuffer,
             userDirPathLen,
             switch (OS) {
@@ -161,17 +202,20 @@ const Commands = struct {
     }
 
     const RootPathError = error{RootNameTooLong};
+
     /// Copies a slash and `rootName` to `pathBuffer` starting from `rootsDirPathLen`.
+    ///
+    /// `rootsDirPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full root path.
     inline fn getRootPath(
         pathBuffer: *[utils.MAX_PATH_BYTES]u8,
-        /// `rootsDirPathLen` must not include trailing slash.
         rootsDirPathLen: usize,
         rootName: []const u8,
     ) RootPathError![]const u8 {
         if (rootName.len > MAX_ROOT_NAME_BYTES) {
             @branchHint(.cold);
+
             return RootPathError.RootNameTooLong;
         }
 
@@ -193,13 +237,14 @@ const Commands = struct {
         return pathBuffer[0..fullRootPathLen];
     }
 
+    // TODO: rework this function
     /// Copies `userDirPath` to `outBuffer` and appends there path to config.
     ///
     /// Returns a slice of the full config path in `outBuffer`.
     inline fn getConfigPath(userDirPath: []const u8, buffer: *[utils.MAX_PATH_BYTES]u8) []const u8 {
         @memcpy(buffer[0..userDirPath.len], userDirPath);
 
-        return utils.insertPathLiteral(
+        return utils.insertPathComponent(
             buffer,
             userDirPath.len,
             switch (OS) {
