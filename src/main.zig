@@ -48,6 +48,8 @@ pub fn main(init: process.Init.Minimal) !void {
 
 /// The CLI commands.
 const Commands = struct {
+    const MAX_ROOT_NAME_BYTES = 60;
+
     pub inline fn help() []const u8 {
         return
         \\commands:
@@ -71,7 +73,7 @@ const Commands = struct {
         // The number 170 is given after profiling
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
-        var userDirPathBuffer: [utils.MAX_PATH_LEN]u8 = undefined;
+        var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
         const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
 
         const rootsDirPath = userDirPathToRootsDirPath(
@@ -81,7 +83,7 @@ const Commands = struct {
         );
 
         const configPath = block: {
-            var buffer: [utils.MAX_PATH_LEN]u8 = undefined;
+            var buffer: [utils.MAX_PATH_BYTES]u8 = undefined;
             break :block getConfigPath(userDirPathBuffer[0..userDirPathLen], &buffer);
         };
 
@@ -93,7 +95,7 @@ const Commands = struct {
 
         const cwd = Dir.cwd();
 
-        var roots = block: {
+        var rootsDirEntries = block: {
             const rootsDir = cwd.openDir(
                 io,
                 rootsDirPath,
@@ -111,7 +113,7 @@ const Commands = struct {
             break :block rootsDir.iterate().reader;
         };
 
-        var currentRoot: ?Dir.Entry = try roots.next(io) orelse {
+        var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
             try output.appendSlice(allocator, noRootCreatedMsg);
 
             return output;
@@ -122,11 +124,13 @@ const Commands = struct {
 
         try output.appendSlice(allocator, "\n\nCreatedRoots:\n");
 
-        while (currentRoot) |root| : (currentRoot = try roots.next(io)) {
-            if (root.kind == .directory) {
+        while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
+            // On macos and windows roots and config located in one dir,
+            // so check is it a dir (root)
+            if (entry.kind == .directory) {
                 try output.append(allocator, ' ');
                 try output.append(allocator, ' ');
-                try output.appendSlice(allocator, root.name);
+                try output.appendSlice(allocator, entry.name);
                 try output.append(allocator, '\n');
             }
         }
@@ -134,14 +138,14 @@ const Commands = struct {
         return output;
     }
 
-    /// Inserts a platfrom-specific relative path to the roots dir to
-    /// `pathBuffer` starting from `userPathEnd`.
+    /// Inserts a platfrom-specific relative
+    /// path to the roots dir to `pathBuffer` starting from `userPathEnd`.
     ///
     /// `pathBuffer[0..userPathEnd]` must not include trailing slash.
     ///
-    /// Returns a slice of the real roots dir path.
+    /// Returns a slice of the full roots dir path.
     inline fn userDirPathToRootsDirPath(
-        pathBuffer: *[utils.MAX_PATH_LEN]u8,
+        pathBuffer: *[utils.MAX_PATH_BYTES]u8,
         userDirPathLen: usize,
     ) []const u8 {
         return utils.insertPathLiteral(
@@ -156,10 +160,38 @@ const Commands = struct {
         );
     }
 
+    /// Copies a slash and `rootName` to `pathBuffer` starting from `rootsDirPathLen`.
+    ///
+    /// `rootsDirPathLen` must not include trailing slash.
+    ///
+    /// Returns a slice of the full root path.
+    inline fn getRootPath(
+        pathBuffer: *[utils.MAX_PATH_BYTES]u8,
+        rootsDirPathLen: usize,
+        rootName: []const u8,
+    ) []const u8 {
+        const rootRelativePath = block: {
+            const slash = if (OS == .windows) "\\" else "/";
+
+            const relativePathLen = slash.len + rootName.len;
+
+            var buffer: [slash.len + MAX_ROOT_NAME_BYTES]u8 = slash;
+            @memcpy(buffer[slash.len..relativePathLen], rootName);
+
+            break :block buffer[0..relativePathLen];
+        };
+
+        const fullRootPathLen = rootsDirPathLen + rootRelativePath.len;
+
+        @memcpy(pathBuffer[rootsDirPathLen..fullRootPathLen], rootRelativePath);
+
+        return pathBuffer[0..fullRootPathLen];
+    }
+
     /// Copies `userDirPath` to `outBuffer` and appends there path to config.
     ///
-    /// Returns a slice of the real config path in `outBuffer`.
-    inline fn getConfigPath(userDirPath: []const u8, buffer: *[utils.MAX_PATH_LEN]u8) []const u8 {
+    /// Returns a slice of the full config path in `outBuffer`.
+    inline fn getConfigPath(userDirPath: []const u8, buffer: *[utils.MAX_PATH_BYTES]u8) []const u8 {
         @memcpy(buffer[0..userDirPath.len], userDirPath);
 
         return utils.insertPathLiteral(
