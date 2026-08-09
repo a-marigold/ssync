@@ -160,16 +160,21 @@ const Commands = struct {
         );
     }
 
+    const RootPathError = error{RootNameTooLong};
     /// Copies a slash and `rootName` to `pathBuffer` starting from `rootsDirPathLen`.
-    ///
-    /// `rootsDirPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full root path.
     inline fn getRootPath(
         pathBuffer: *[utils.MAX_PATH_BYTES]u8,
+        /// `rootsDirPathLen` must not include trailing slash.
         rootsDirPathLen: usize,
         rootName: []const u8,
-    ) []const u8 {
+    ) RootPathError![]const u8 {
+        if (rootName.len > MAX_ROOT_NAME_BYTES) {
+            @branchHint(.cold);
+            return RootPathError.RootNameTooLong;
+        }
+
         const rootRelativePath = block: {
             const slash = if (OS == .windows) "\\" else "/";
 
