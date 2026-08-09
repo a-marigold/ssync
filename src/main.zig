@@ -74,25 +74,25 @@ const Commands = struct {
 
     pub inline fn help() []const u8 {
         const text =
-            \\Terms:
-            \\  'root' Synchronization root, root folder of data with a similar domain.
-            \\         Used to separate, for example, 'music', 'configs', 'editors' and so on.
-            \\         Roots can be handled differently in handlers, and that is the key purpose of them.
-            \\
             \\Commands:
-            \\  list                           Show path to the config, path to roots and all created roots.
+            \\  list                            Show path to the config, path to roots and all created roots.
             \\
-            \\  create [root]                  Create a root. 
+            \\  create [root]                   Create a root.
             \\
-            \\  add [root, ?source, ?dest]     'root' is name of a root to copy 'source' file to.
-            \\                                 'source' is path to a file in the system which is to be copied to 'dest'.
-            \\                                 'dest' is a path relative to 'root' to copy 'source' to.
-            \\                                 If 'source' and 'dest' are not specified, just root is created.
+            \\  add [root, source, dest]        'root' is name of a root to copy 'source' file to.
+            \\                                  'source' is path to a file in the system which is to be copied to 'dest'.
+            \\                                  'dest' is a path relative to 'root' to copy 'source' to.
+            \\                                  If 'source' and 'dest' are not specified, just root is created.
             \\
-            \\  delete [root, ?file]           If 'file' specified, delete the 'file' in 'root'.
-            \\                                 If only 'file' is not specified, delete the whole root (prompt is shown for safety).
+            \\  delete [root, ?file]            If 'file' specified, delete the 'file' in 'root'.
+            \\                                  If only 'file' is not specified, delete the whole root (prompt is shown for safety).
             \\
-            \\  update [root, newSource, dest] Make 'dest' in 'root' track 'newSource' instead of the current.
+            \\  update [root, newSource, dest]  Make 'dest' in 'root' track 'newSource' instead of the current.
+            \\
+            \\Terms:
+            \\  root  Synchronization root, root folder of data with a similar domain.
+            \\        Used to separate, for example, 'music', 'configs', 'editor' and so on.
+            \\        Roots can be handled differently in handlers, and that is the key purpose of them.
             \\
         ;
 
@@ -109,13 +109,14 @@ const Commands = struct {
 
         const rootsDirPath = getRootsDirPath(
             &userDirPathBuffer,
-
             userDirPathLen,
         );
 
         const configPath = block: {
-            var buffer: [utils.MAX_PATH_BYTES]u8 = undefined;
-            break :block getConfigPath(userDirPathBuffer[0..userDirPathLen], &buffer);
+            // Copy the user path not to rewrite `rootsDirPath`
+            var buffer: [utils.MAX_PATH_BYTES]u8 = userDirPathBuffer;
+
+            break :block getConfigPath(&buffer, userDirPathLen);
         };
 
         try output.appendSlice(allocator, "Config should be located at: ");
@@ -220,15 +221,17 @@ const Commands = struct {
         pathBuffer: *[utils.MAX_PATH_BYTES]u8,
         userDirPathLen: usize,
     ) []const u8 {
+        const rootsDirRelativePath = switch (OS) {
+            .linux => "/.local/share/ssync",
+            .macos => "/Library/Application Support/ssync",
+            .windows => "\\ssync",
+            else => unreachable,
+        };
+
         return utils.insertPathComponent(
             pathBuffer,
             userDirPathLen,
-            switch (OS) {
-                .linux => "/.local/share/ssync",
-                .macos => "/Library/Application Support/ssync",
-                .windows => "\\ssync",
-                else => unreachable,
-            },
+            rootsDirRelativePath,
         );
     }
 
@@ -249,7 +252,7 @@ const Commands = struct {
 
             return RootPathError.RootNameTooLong;
         }
-
+        // TODO: rework
         const rootRelativePath = block: {
             const slash = (if (OS == .windows) "\\" else "/").*;
 
@@ -270,22 +273,23 @@ const Commands = struct {
         return pathBuffer[0..fullRootPathLen];
     }
 
-    // TODO: rework this function
-    /// Copies `userDirPath` to `outBuffer` and appends there path to config.
+    /// Copies platfrom specific relative path to the config to `pathBuffer` starting from `userDirPathLen`.
     ///
-    /// Returns a slice of the full config path in `outBuffer`.
-    inline fn getConfigPath(userDirPath: []const u8, buffer: *[utils.MAX_PATH_BYTES]u8) []const u8 {
-        @memcpy(buffer[0..userDirPath.len], userDirPath);
+    /// `userDirPathLen` must not include trailing slash.
+    ///
+    /// Returns a slice of the full path.
+    inline fn getConfigPath(pathBuffer: *[utils.MAX_PATH_BYTES]u8, userDirPathLen: usize) []const u8 {
+        const configRelativePath = switch (OS) {
+            .linux => "/.config/ssync.toml",
+            .macos => "/Library/Application Support/ssync/ssync.toml",
+            .windows => "\\ssync\\ssync.toml",
+            else => unreachable,
+        };
 
         return utils.insertPathComponent(
-            buffer,
-            userDirPath.len,
-            switch (OS) {
-                .linux => "/.config/ssync.toml",
-                .macos => "/Library/Application Support/ssync/ssync.toml",
-                .windows => "\\ssync\\ssync.toml",
-                else => unreachable,
-            },
+            pathBuffer,
+            userDirPathLen,
+            configRelativePath,
         );
     }
 };

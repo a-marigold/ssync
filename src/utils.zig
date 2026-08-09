@@ -17,6 +17,7 @@ pub const UserDirPathError = error{
     GetHomeEnvFail,
 };
 
+// TODO: rename to userpath
 /// Writes to `buffer` the path to user dir.
 ///
 /// Returns length of the path in `buffer` or `null` in case of error.
