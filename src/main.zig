@@ -29,24 +29,38 @@ pub fn main(init: process.Init.Minimal) !void {
         var stdout: utils.StdIo = .init(io, .Stdout);
 
         const eqlCmd = Commands.eqlCmd;
-
         if (eqlCmd(cmd, "--help")) {
             try stdout.write(Commands.help());
 
-            process.exit(0);
+            utils.exit(.Success);
         }
+
         if (eqlCmd(cmd, "list")) {
             const listOutput = try Commands.list(arenaAllocator, io, environ);
 
             try stdout.write(listOutput.items);
 
-            process.exit(0);
+            utils.exit(.Success);
+        }
+
+        if (eqlCmd(cmd, "create")) {
+            const rootName = args.next() orelse {
+                try stderr.write("'root' argument expected\n");
+
+                utils.exit(.InvalidArg);
+            };
+
+            try Commands.create(io, environ, rootName);
+
+            try stdout.write("Root was successfully created\n");
+
+            utils.exit(.Success);
         }
     }
 
     try stderr.write(Commands.help());
 
-    process.exit(1);
+    utils.exit(.InvalidArg);
 }
 
 /// The CLI commands.
@@ -228,11 +242,13 @@ const Commands = struct {
         }
 
         const rootRelativePath = block: {
-            const slash = if (OS == .windows) "\\" else "/";
+            const slash = (if (OS == .windows) "\\" else "/").*;
 
             const relativePathLen = slash.len + rootName.len;
 
-            var buffer: [slash.len + MAX_ROOT_NAME_BYTES]u8 = slash;
+            var buffer: [slash.len + MAX_ROOT_NAME_BYTES]u8 = undefined;
+            buffer[0] = slash[0];
+
             @memcpy(buffer[slash.len..relativePathLen], rootName);
 
             break :block buffer[0..relativePathLen];
