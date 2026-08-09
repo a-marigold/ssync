@@ -73,30 +73,39 @@ const Commands = struct {
     }
 
     pub inline fn help() []const u8 {
-        return
-        \\commands:
-        \\  list                           Show path to the config, path to roots and all created roots.
-        \\
-        \\  add [root, ?source, ?dest]     'root' is name of a root to copy 'source' file to.
-        \\                                 'source' is path to a file in the system which is to be copied to 'dest'.
-        \\                                 'dest' is a path relative to 'root' to copy 'source' to.
-        \\                                 If 'source' and 'dest' are not specified, just root is created.
-        \\
-        \\  delete [root, ?file]           If 'file' specified, delete the 'file' in 'root'.
-        \\                                 If only 'file' is not specified, delete the whole root (prompt is shown for safety).
-        \\
-        \\  update [root, newSource, dest] Make 'dest' in 'root' track 'newSource' instead of the current.
-        \\
+        const text =
+            \\Terms:
+            \\  'root' Synchronization root, root folder of data with a similar domain.
+            \\         Used to separate, for example, 'music', 'configs', 'editors' and so on.
+            \\         Roots can be handled differently in handlers, and that is the key purpose of them.
+            \\
+            \\Commands:
+            \\  list                           Show path to the config, path to roots and all created roots.
+            \\
+            \\  create [root]                  Create a root. 
+            \\
+            \\  add [root, ?source, ?dest]     'root' is name of a root to copy 'source' file to.
+            \\                                 'source' is path to a file in the system which is to be copied to 'dest'.
+            \\                                 'dest' is a path relative to 'root' to copy 'source' to.
+            \\                                 If 'source' and 'dest' are not specified, just root is created.
+            \\
+            \\  delete [root, ?file]           If 'file' specified, delete the 'file' in 'root'.
+            \\                                 If only 'file' is not specified, delete the whole root (prompt is shown for safety).
+            \\
+            \\  update [root, newSource, dest] Make 'dest' in 'root' track 'newSource' instead of the current.
+            \\
         ;
+
+        return text;
     }
 
     /// Returns output of the command.
-    pub inline fn list(allocator: mem.Allocator, io: Io, environ: process.Environ) !std.ArrayList(u8) {
+    pub inline fn list(allocator: mem.Allocator, io: Io, env: process.Environ) !std.ArrayList(u8) {
         // Capacity 170 is enough for most cases
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
-        const userDirPathLen = try utils.getUserDirPath(environ, &userDirPathBuffer);
+        const userDirPathLen = try utils.getUserDirPath(env, &userDirPathBuffer);
 
         const rootsDirPath = getRootsDirPath(
             &userDirPathBuffer,
@@ -165,12 +174,12 @@ const Commands = struct {
     const CreateError = error{ RootAlreadyExists, CreateDirFail };
     pub inline fn create(
         io: Io,
-        environ: process.Environ,
+        env: process.Environ,
         rootName: []const u8,
     ) (CreateError || utils.UserDirPathError || RootPathError)!void {
         var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
         const userDirPathLen = try utils.getUserDirPath(
-            environ,
+            env,
             &userDirPathBuffer,
         );
 

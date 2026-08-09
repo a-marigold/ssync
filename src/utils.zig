@@ -22,11 +22,11 @@ pub const UserDirPathError = error{
 /// Returns length of the path in `buffer` or `null` in case of error.
 pub inline fn getUserDirPath(
     /// `process.Environ` from which to read the user dir path.
-    environ: process.Environ,
+    env: process.Environ,
     buffer: *[MAX_PATH_BYTES]u8,
 ) UserDirPathError!usize {
     if (OS == .windows) {
-        const utf16Path = environ.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
+        const utf16Path = env.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
             return UserDirPathError.GetUserProfileEnvFail;
         };
 
@@ -36,7 +36,7 @@ pub inline fn getUserDirPath(
 
         return utf8PathLen;
     } else {
-        const path = environ.getPosix("HOME") orelse {
+        const path = env.getPosix("HOME") orelse {
             return UserDirPathError.GetHomeEnvFail;
         };
         const pathLen = path.len;
