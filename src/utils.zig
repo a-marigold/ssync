@@ -64,18 +64,6 @@ pub inline fn insertPathComponent(
     return pathBuffer[0..newPathLen];
 }
 
-/// Appends every slice of `slices` to `array`.
-pub inline fn arrayAppendSlices(
-    allocator: mem.Allocator,
-    comptime T: type,
-    array: *std.ArrayList(T),
-    slices: anytype,
-) !void {
-    inline for (slices) |slice| {
-        try array.appendSlice(allocator, slice);
-    }
-}
-
 /// High-level wrapper over unbufferred, streaming `stdout` or `stderr` from zig std.
 pub const StdIo = struct {
     stdio: Io.File.Writer,
@@ -94,13 +82,17 @@ pub const StdIo = struct {
         return .{ .stdio = stdio };
     }
 
-    /// Outputs `data` to `stdout` or `stderr`.
+    /// Outputs the `data`.
     pub inline fn write(self: *@This(), data: []const u8) !void {
         const writer = @constCast(&self.stdio.interface);
 
         _ = try writer.vtable.drain(writer, &.{data}, 1);
     }
 };
+
+pub inline fn exit(code: enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 }) noreturn {
+    process.exit(@intFromEnum(code));
+}
 
 pub inline fn getUtf16Literal(comptime utf8Literal: []const u8) []const u16 {
     return comptime std.unicode.utf8ToUtf16LeStringLiteral(utf8Literal);
