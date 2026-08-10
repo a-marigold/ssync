@@ -6,13 +6,13 @@ const Dir = Io.Dir;
 const process = std.process;
 const unicode = std.unicode;
 const builtin = @import("builtin");
-
 const utils = @import("utils.zig");
 
 const OS = builtin.os.tag;
 
 pub fn main(init: process.Init.Minimal) !void {
     const environ = init.environ;
+
     var arena: heap.ArenaAllocator = .init(heap.page_allocator);
     const arenaAllocator = arena.allocator();
 
@@ -24,11 +24,11 @@ pub fn main(init: process.Init.Minimal) !void {
     var args = try init.args.iterateAllocator(arenaAllocator);
 
     _ = args.skip();
-
     if (args.next()) |cmd| {
         var stdout: utils.StdIo = .init(io, .Stdout);
 
         const eqlCmd = Commands.eqlCmd;
+
         if (eqlCmd(cmd, "--help")) {
             try stdout.write(Commands.help());
 
@@ -155,7 +155,6 @@ const Commands = struct {
         try output.appendSlice(allocator, rootsDirPath);
 
         try output.appendSlice(allocator, "\n\nCreatedRoots:\n");
-
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config located in one dir,
             // so check is it a dir (root)
@@ -252,23 +251,17 @@ const Commands = struct {
 
             return RootPathError.RootNameTooLong;
         }
-        // TODO: rework
-        const rootRelativePath = block: {
-            const slash = (if (OS == .windows) "\\" else "/").*;
 
-            const relativePathLen = slash.len + rootName.len;
+        const slash = if (OS == .windows) '\\' else '/';
+        const slashLen = 1;
 
-            var buffer: [slash.len + MAX_ROOT_NAME_BYTES]u8 = undefined;
-            buffer[0] = slash[0];
+        pathBuffer[rootsDirPathLen] = slash;
 
-            @memcpy(buffer[slash.len..relativePathLen], rootName);
+        const insertionStart = rootsDirPathLen + slashLen;
 
-            break :block buffer[0..relativePathLen];
-        };
+        const fullRootPathLen = insertionStart + rootName.len;
 
-        const fullRootPathLen = rootsDirPathLen + rootRelativePath.len;
-
-        @memcpy(pathBuffer[rootsDirPathLen..fullRootPathLen], rootRelativePath);
+        @memcpy(pathBuffer[insertionStart..fullRootPathLen], rootName);
 
         return pathBuffer[0..fullRootPathLen];
     }
