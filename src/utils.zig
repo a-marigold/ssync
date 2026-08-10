@@ -9,11 +9,12 @@ const OS = builtin.os.tag;
 
 pub const MAX_PATH_BYTES = Io.Dir.max_path_bytes;
 
-pub const UserDirPathError = error{
+pub const UserPathError = error{
     GetUserProfileEnvFail,
 
     /// Only on windows.
     ConvertPathToUtf8Fail,
+
     GetHomeEnvFail,
 };
 
@@ -21,24 +22,24 @@ pub const UserDirPathError = error{
 /// Writes to `buffer` the path to user dir.
 ///
 /// Returns length of the path in `buffer` or `null` in case of error.
-pub inline fn getUserDirPath(
+pub inline fn getUserPath(
     /// `process.Environ` from which to read the user dir path.
     env: process.Environ,
     buffer: *[MAX_PATH_BYTES]u8,
-) UserDirPathError!usize {
+) UserPathError!usize {
     if (OS == .windows) {
         const utf16Path = env.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
-            return UserDirPathError.GetUserProfileEnvFail;
+            return UserPathError.GetUserProfileEnvFail;
         };
 
         const utf8PathLen = unicode.utf16LeToUtf8(buffer, utf16Path) catch {
-            return UserDirPathError.ConvertPathToUtf8Fail;
+            return UserPathError.ConvertPathToUtf8Fail;
         };
 
         return utf8PathLen;
     } else {
         const path = env.getPosix("HOME") orelse {
-            return UserDirPathError.GetHomeEnvFail;
+            return UserPathError.GetHomeEnvFail;
         };
         const pathLen = path.len;
 

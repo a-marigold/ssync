@@ -104,19 +104,18 @@ const Commands = struct {
         // Capacity 170 is enough for most cases
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
-        var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
-        const userDirPathLen = try utils.getUserDirPath(env, &userDirPathBuffer);
+        var userPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
+        const userPathLen = try utils.getUserPath(env, &userPathBuffer);
 
         const rootsDirPath = getRootsDirPath(
-            &userDirPathBuffer,
-            userDirPathLen,
+            &userPathBuffer,
+            userPathLen,
         );
 
         const configPath = block: {
             // Copy the user path not to rewrite `rootsDirPath`
-            var buffer: [utils.MAX_PATH_BYTES]u8 = userDirPathBuffer;
-
-            break :block getConfigPath(&buffer, userDirPathLen);
+            var buffer: [utils.MAX_PATH_BYTES]u8 = userPathBuffer;
+            break :block getConfigPath(&buffer, userPathLen);
         };
 
         try output.appendSlice(allocator, "Config should be located at: ");
@@ -176,21 +175,21 @@ const Commands = struct {
         io: Io,
         env: process.Environ,
         rootName: []const u8,
-    ) (CreateError || utils.UserDirPathError || RootPathError)!void {
-        var userDirPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
-        const userDirPathLen = try utils.getUserDirPath(
+    ) (CreateError || utils.UserPathError || RootPathError)!void {
+        var userPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
+        const userPathLen = try utils.getUserPath(
             env,
-            &userDirPathBuffer,
+            &userPathBuffer,
         );
 
         const rootPath = block: {
             const rootsDirPath = getRootsDirPath(
-                &userDirPathBuffer,
-                userDirPathLen,
+                &userPathBuffer,
+                userPathLen,
             );
 
             break :block try getRootPath(
-                &userDirPathBuffer,
+                &userPathBuffer,
                 rootsDirPath.len,
                 rootName,
             );
@@ -211,14 +210,13 @@ const Commands = struct {
     }
 
     /// Inserts a platfrom-specific relative
-    /// path of the roots dir to `pathBuffer` starting from `userDirPathLen`
+    /// path of the roots dir to `pathBuffer` starting from `userPathLen`.
     ///
-    /// `userDirPathLen` must not include trailing slash.
-    ///
+    /// `userPathLen` must not include trailing slash.
     /// Returns a slice of the full roots dir path.
     inline fn getRootsDirPath(
         pathBuffer: *[utils.MAX_PATH_BYTES]u8,
-        userDirPathLen: usize,
+        userPathLen: usize,
     ) []const u8 {
         const rootsDirRelativePath = switch (OS) {
             .linux => "/.local/share/ssync",
@@ -230,7 +228,7 @@ const Commands = struct {
         return utils.insertSlice(
             u8,
             pathBuffer,
-            userDirPathLen,
+            userPathLen,
             rootsDirRelativePath,
         );
     }
@@ -266,12 +264,12 @@ const Commands = struct {
         );
     }
 
-    /// Copies platfrom specific relative path to the config to `pathBuffer` starting from `userDirPathLen`.
+    /// Copies platfrom specific relative path to the config to `pathBuffer` starting from `userPathLen`.
     ///
-    /// `userDirPathLen` must not include trailing slash.
+    /// `userPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full path.
-    inline fn getConfigPath(pathBuffer: *[utils.MAX_PATH_BYTES]u8, userDirPathLen: usize) []const u8 {
+    inline fn getConfigPath(pathBuffer: *[utils.MAX_PATH_BYTES]u8, userPathLen: usize) []const u8 {
         const configRelativePath = switch (OS) {
             .linux => "/.config/ssync.toml",
             .macos => "/Library/Application Support/ssync/ssync.toml",
@@ -282,7 +280,7 @@ const Commands = struct {
         return utils.insertSlice(
             u8,
             pathBuffer,
-            userDirPathLen,
+            userPathLen,
             configRelativePath,
         );
     }
