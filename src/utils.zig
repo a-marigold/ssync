@@ -48,21 +48,22 @@ pub inline fn getUserDirPath(
     }
 }
 
-/// Simply inserts `component` to `path` starting from `startIndex`, without resolving relativness.
+/// Inserts `slice` to `buffer` starting from `startIndex`.
 ///
-/// `path[0..startIndex]` must not include trailing slash, but `component` must start with slash.
+/// `buffer` is assumed to have enough length to receive `slice`.
 ///
-/// Returns a slice in `pathBuffer` of the result.
-pub inline fn insertPathComponent(
-    pathBuffer: *[MAX_PATH_BYTES]u8,
+/// Returns `buffer[0..resultLen]`.
+pub inline fn insertSlice(
+    comptime T: type,
+    buffer: []T,
     startIndex: usize,
-    component: []const u8,
+    slice: []const T,
 ) []const u8 {
-    const newPathLen = startIndex + component.len;
+    const newLen = startIndex + slice.len;
 
-    @memcpy(pathBuffer[startIndex..newPathLen], component);
+    @memcpy(buffer[startIndex..newLen], slice);
 
-    return pathBuffer[0..newPathLen];
+    return buffer[0..newLen];
 }
 
 /// High-level wrapper over unbufferred, streaming `stdout` or `stderr` from zig std.

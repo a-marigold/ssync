@@ -156,7 +156,7 @@ const Commands = struct {
 
         try output.appendSlice(allocator, "\n\nCreatedRoots:\n");
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
-            // On macos and windows roots and config located in one dir,
+            // On macos and windows roots and config are located in one dir,
             // so check is it a dir (root)
             if ((comptime OS != .linux) and entry.kind != .directory) {
                 continue;
@@ -227,7 +227,8 @@ const Commands = struct {
             else => unreachable,
         };
 
-        return utils.insertPathComponent(
+        return utils.insertSlice(
+            u8,
             pathBuffer,
             userDirPathLen,
             rootsDirRelativePath,
@@ -257,13 +258,12 @@ const Commands = struct {
 
         pathBuffer[rootsDirPathLen] = slash;
 
-        const insertionStart = rootsDirPathLen + slashLen;
-
-        const fullRootPathLen = insertionStart + rootName.len;
-
-        @memcpy(pathBuffer[insertionStart..fullRootPathLen], rootName);
-
-        return pathBuffer[0..fullRootPathLen];
+        return utils.insertSlice(
+            u8,
+            pathBuffer,
+            rootsDirPathLen + slashLen,
+            rootName,
+        );
     }
 
     /// Copies platfrom specific relative path to the config to `pathBuffer` starting from `userDirPathLen`.
@@ -279,7 +279,8 @@ const Commands = struct {
             else => unreachable,
         };
 
-        return utils.insertPathComponent(
+        return utils.insertSlice(
+            u8,
             pathBuffer,
             userDirPathLen,
             configRelativePath,
