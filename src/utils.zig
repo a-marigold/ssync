@@ -59,7 +59,7 @@ pub inline fn getUserPath(
 /// Resolves `./` and `.\` in `relativePath`.
 ///
 /// Returns a slice of the result in `pathBuffer`.
-pub inline fn joinPaths(
+pub inline fn joinPath(
     pathBuffer: *[MAX_PATH_BYTES]u8,
     firstPathLen: usize,
     relativePath: []const u8,
@@ -101,7 +101,7 @@ pub inline fn insertSlice(
 }
 
 /// High-level wrapper over unbufferred, streaming `stdout` or `stderr` from zig std.
-pub const StdIo = struct {
+pub const StdOut = struct {
     stdio: Io.File.Writer,
 
     pub inline fn init(io: Io, comptime stdioType: enum { Stdout, Stderr }) @This() {
@@ -118,8 +118,10 @@ pub const StdIo = struct {
         return .{ .stdio = stdio };
     }
 
-    /// Outputs the `data`.
-    pub inline fn write(self: *@This(), data: []const u8) !void {
+    pub const WriteError = Io.Writer.Error;
+
+    /// Outputs `data`.
+    pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
         const writer = @constCast(&self.stdio.interface);
 
         _ = try writer.vtable.drain(writer, &.{data}, 1);

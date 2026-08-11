@@ -13,7 +13,7 @@ const utils = @import("utils.zig");
 const OS = builtin.os.tag;
 
 const MAX_PATH_BYTES = utils.MAX_PATH_BYTES;
-const StdIo = utils.StdIo;
+const StdOut = utils.StdOut;
 
 pub fn main(init: process.Init.Minimal) !void {
     const environ = init.environ;
@@ -25,14 +25,14 @@ pub fn main(init: process.Init.Minimal) !void {
     var threaded: Io.Threaded = .init(arenaAllocator, .{});
     const io = threaded.io();
 
-    var stderr: StdIo = .init(io, .Stderr);
+    var stderr: StdOut = .init(io, .Stderr);
 
     var args = try init.args.iterateAllocator(arenaAllocator);
 
     _ = args.skip();
 
     if (args.next()) |cmd| {
-        var stdout: StdIo = .init(io, .Stdout);
+        var stdout: StdOut = .init(io, .Stdout);
 
         const eqlCmd = Commands.eqlCmd;
 
@@ -221,7 +221,7 @@ const Commands = struct {
     inline fn add(
         io: Io,
         env: Environ,
-        stdout: *StdIo,
+        stdout: *StdOut,
         rootName: []const u8,
         sourcePath: []const u8,
         destPath: []const u8,
@@ -283,7 +283,7 @@ const Commands = struct {
     }
     inline fn addRoot(
         io: Io,
-        stdout: StdIo,
+        stdout: StdOut,
         rootPath: []const u8,
         sourceFullPath: []const u8,
         destFullPath: []const u8,
