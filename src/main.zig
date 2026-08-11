@@ -3,29 +3,36 @@ const mem = std.mem;
 const heap = std.heap;
 const Io = std.Io;
 const Dir = Io.Dir;
+const path = Dir.path;
 const process = std.process;
+const Environ = process.Environ;
 const unicode = std.unicode;
 const builtin = @import("builtin");
 const utils = @import("utils.zig");
 
 const OS = builtin.os.tag;
 
+const MAX_PATH_BYTES = utils.MAX_PATH_BYTES;
+const StdIo = utils.StdIo;
+
 pub fn main(init: process.Init.Minimal) !void {
     const environ = init.environ;
 
+    // TODO: initialize allocator lazily only where needed
     var arena: heap.ArenaAllocator = .init(heap.page_allocator);
     const arenaAllocator = arena.allocator();
 
     var threaded: Io.Threaded = .init(arenaAllocator, .{});
     const io = threaded.io();
 
-    var stderr: utils.StdIo = .init(io, .Stderr);
+    var stderr: StdIo = .init(io, .Stderr);
 
     var args = try init.args.iterateAllocator(arenaAllocator);
 
     _ = args.skip();
+
     if (args.next()) |cmd| {
-        var stdout: utils.StdIo = .init(io, .Stdout);
+        var stdout: StdIo = .init(io, .Stdout);
 
         const eqlCmd = Commands.eqlCmd;
 
@@ -100,22 +107,20 @@ const Commands = struct {
     }
 
     /// Returns output of the command.
-    pub inline fn list(allocator: mem.Allocator, io: Io, env: process.Environ) !std.ArrayList(u8) {
+    pub inline fn list(allocator: mem.Allocator, io: Io, env: Environ) !std.ArrayList(u8) {
         // Capacity 170 is enough for most cases
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
-        var userPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
-        const userPathLen = try utils.getUserPath(env, &userPathBuffer);
-
+        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
+        const userPath = try utils.getUserPath(env, &userPathBuffer);
         const rootsDirPath = getRootsDirPath(
             &userPathBuffer,
-            userPathLen,
+            userPath.len,
         );
-
         const configPath = block: {
             // Copy the user path not to rewrite `rootsDirPath`
-            var buffer: [utils.MAX_PATH_BYTES]u8 = userPathBuffer;
-            break :block getConfigPath(&buffer, userPathLen);
+            var buffer: [MAX_PATH_BYTES]u8 = userPathBuffer;
+            break :block getConfigPath(&buffer, userPath.len);
         };
 
         try output.appendSlice(allocator, "Config should be located at: ");
@@ -173,19 +178,16 @@ const Commands = struct {
     const CreateError = error{ RootAlreadyExists, CreateDirFail };
     pub inline fn create(
         io: Io,
-        env: process.Environ,
+        env: Environ,
         rootName: []const u8,
     ) (CreateError || utils.UserPathError || RootPathError)!void {
-        var userPathBuffer: [utils.MAX_PATH_BYTES]u8 = undefined;
-        const userPathLen = try utils.getUserPath(
-            env,
-            &userPathBuffer,
-        );
+        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
+        const userPath = try utils.getUserPath(env, &userPathBuffer);
 
         const rootPath = block: {
             const rootsDirPath = getRootsDirPath(
                 &userPathBuffer,
-                userPathLen,
+                userPath.len,
             );
 
             break :block try getRootPath(
@@ -195,8 +197,7 @@ const Commands = struct {
             );
         };
 
-        const cwd = Dir.cwd();
-        cwd.createDir(
+        Dir.cwd().createDir(
             io,
             rootPath,
             Dir.Permissions.default_dir,
@@ -209,13 +210,123 @@ const Commands = struct {
         };
     }
 
+    const AddError = error{
+        DestPathAbsolute,
+        GetSourceFullPathFail,
+        RootNotExist,
+        DeleteRootFail,
+        StatSourceFail,
+        SourceNotDir,
+    };
+    inline fn add(
+        io: Io,
+        env: Environ,
+        stdout: *StdIo,
+        rootName: []const u8,
+        sourcePath: []const u8,
+        destPath: []const u8,
+    ) (AddError || utils.UserPathError || RootPathError)!void {
+        const userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
+        const userPath = try utils.getUserPath(env, userPathBuffer);
+
+        const rootsDirPath = getRootsDirPath(userPathBuffer, userPath.len);
+
+        const rootPath = try getRootPath(
+            userPathBuffer,
+            rootsDirPath.len,
+            rootName,
+        );
+
+        const cwd = Dir.cwd();
+
+        const sourceFullPath = block: {
+            if (path.isAbsolute(sourcePath)) {
+                break :block sourcePath;
+            }
+
+            var buffer: [MAX_PATH_BYTES]u8 = undefined;
+            const fullPathLen = cwd.realPathFile(
+                io,
+                sourcePath,
+                &buffer,
+            ) catch {
+                return AddError.GetSourceFullPathFail;
+            };
+
+            break :block buffer[0..fullPathLen];
+        };
+
+        const destFullPath = block: {
+            if (path.isAbsolute(destPath)) {
+                @branchHint(.cold);
+
+                return AddError.DestPathAbsolute;
+            }
+
+            break :block utils.joinPath(
+                &userPathBuffer,
+                rootPath.len,
+                destPath,
+            );
+        };
+
+        // Symlink the whole root
+        if (destFullPath.len == rootPath.len) {
+            return try addRoot(
+                io,
+                stdout,
+                rootPath,
+                sourceFullPath,
+                destFullPath,
+            );
+        }
+    }
+    inline fn addRoot(
+        io: Io,
+        stdout: StdIo,
+        rootPath: []const u8,
+        sourceFullPath: []const u8,
+        destFullPath: []const u8,
+    ) AddError!void {
+        const cwd = Dir.cwd();
+
+        cwd.deleteDir(io, rootPath) catch |err| {
+            switch (err) {
+                Dir.DeleteDirError.FileNotFound => return AddError.RootNotExist,
+                Dir.DeleteDirError.DirNotEmpty => {
+                    try stdout.write("Root is not empty. Rewrite all files [y/n]?:\n");
+
+                    cwd.deleteTree(io, rootPath) catch return AddError.DeleteRootFail;
+
+                    const sourceFileKind = (cwd.statFile(
+                        io,
+                        sourceFullPath,
+                        .{ .follow_symlinks = false },
+                    ) catch return AddError.StatSourceFail).kind;
+                    if (sourceFileKind != .directory) {
+                        return AddError.SourceNotDir;
+                    }
+
+                    cwd.symLink(
+                        io,
+                        sourceFullPath,
+                        destFullPath,
+                        .{ .is_directory = true },
+                    );
+                },
+                else => return AddError.DeleteRootFail,
+            }
+        };
+    }
+
     /// Inserts a platfrom-specific relative
     /// path of the roots dir to `pathBuffer` starting from `userPathLen`.
     ///
     /// `userPathLen` must not include trailing slash.
+    ///
     /// Returns a slice of the full roots dir path.
     inline fn getRootsDirPath(
-        pathBuffer: *[utils.MAX_PATH_BYTES]u8,
+        pathBuffer: *[MAX_PATH_BYTES]u8,
         userPathLen: usize,
     ) []const u8 {
         const rootsDirRelativePath = switch (OS) {
@@ -234,14 +345,13 @@ const Commands = struct {
     }
 
     const RootPathError = error{RootNameTooLong};
-
     /// Copies a slash and `rootName` to `pathBuffer` starting from `rootsDirPathLen`.
     ///
     /// `rootsDirPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full root path.
     inline fn getRootPath(
-        pathBuffer: *[utils.MAX_PATH_BYTES]u8,
+        pathBuffer: *[MAX_PATH_BYTES]u8,
         rootsDirPathLen: usize,
         rootName: []const u8,
     ) RootPathError![]const u8 {
@@ -255,7 +365,6 @@ const Commands = struct {
         const slashLen = 1;
 
         pathBuffer[rootsDirPathLen] = slash;
-
         return utils.insertSlice(
             u8,
             pathBuffer,
@@ -269,7 +378,7 @@ const Commands = struct {
     /// `userPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full path.
-    inline fn getConfigPath(pathBuffer: *[utils.MAX_PATH_BYTES]u8, userPathLen: usize) []const u8 {
+    inline fn getConfigPath(pathBuffer: *[MAX_PATH_BYTES]u8, userPathLen: usize) []const u8 {
         const configRelativePath = switch (OS) {
             .linux => "/.config/ssync.toml",
             .macos => "/Library/Application Support/ssync/ssync.toml",
