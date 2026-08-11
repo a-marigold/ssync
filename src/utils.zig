@@ -18,15 +18,14 @@ pub const UserPathError = error{
     GetHomeEnvFail,
 };
 
-// TODO: rename to userpath
 /// Writes to `buffer` the path to user dir.
 ///
-/// Returns length of the path in `buffer` or `null` in case of error.
+/// Returns a slice of the path in `buffer` or `UserPathError`.
 pub inline fn getUserPath(
     /// `process.Environ` from which to read the user dir path.
     env: process.Environ,
     buffer: *[MAX_PATH_BYTES]u8,
-) UserPathError!usize {
+) UserPathError![]const u8 {
     if (OS == .windows) {
         const utf16Path = env.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
             return UserPathError.GetUserProfileEnvFail;
@@ -41,12 +40,46 @@ pub inline fn getUserPath(
         const path = env.getPosix("HOME") orelse {
             return UserPathError.GetHomeEnvFail;
         };
-        const pathLen = path.len;
 
-        @memcpy(buffer[0..pathLen], path);
+        const bufferPath = buffer[0..path.len];
 
-        return pathLen;
+        @memcpy(bufferPath, path);
+
+        return bufferPath;
     }
+}
+
+/// If `relativePath` is `.` or `./`, returns `pathBuffer[0..firstPathLen]`.
+/// Otherwise copies `relativePath` to `pathBuffer` starting from `firstPathLen`.
+///
+/// `pathBuffer[0..firstPathLen]` must contain the firstPath without trailing slash.
+///
+/// `relativePath` must be relative and have length at least 1.
+///
+/// Resolves `./` and `.\` in `relativePath`.
+///
+/// Returns a slice of the result in `pathBuffer`.
+pub inline fn joinPaths(
+    pathBuffer: *[MAX_PATH_BYTES]u8,
+    firstPathLen: usize,
+    relativePath: []const u8,
+) []const u8 {
+    const slash = if (OS == .windows) '\\' else '/';
+    const slashLen = 1;
+
+    // If it starts with './', just copy including slash
+    if (relativePath[0] == '.') {
+        // Only '.' or './'
+        if (relativePath.len <= 2) {
+            return pathBuffer[0..firstPathLen];
+        }
+
+        return insertSlice(u8, pathBuffer, firstPathLen, relativePath[1..]);
+    }
+
+    pathBuffer[firstPathLen] = slash;
+
+    return insertSlice(u8, pathBuffer, firstPathLen + slashLen, relativePath);
 }
 
 /// Inserts `slice` to `buffer` starting from `startIndex`.
