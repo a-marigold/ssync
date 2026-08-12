@@ -27,7 +27,9 @@ pub inline fn getUserPath(
     buffer: *[MAX_PATH_BYTES]u8,
 ) UserPathError![]const u8 {
     if (OS == .windows) {
-        const utf16Path = env.getWindows(getUtf16Literal("%USERPROFILE%")) orelse {
+        const utf16Path = env.getWindows(
+            unicode.utf8ToUtf16LeStringLiteral("%USERPROFILE%"),
+        ) orelse {
             return UserPathError.GetUserProfileEnvFail;
         };
 
@@ -100,6 +102,23 @@ pub inline fn insertSlice(
     return buffer[0..newLen];
 }
 
+/// High-level wrapper over buffered, streaming `stdin`.
+pub const StdIn = struct {
+    reader: Io.File.Reader,
+
+    pub inline fn init(io: Io, buffer: []u8) @This() {
+        return .{ .reader = Io.File.stdin().readerStreaming(io, buffer) };
+    }
+
+    pub const ReadError = Io.Reader.Error;
+
+    pub inline fn readByte(self: *@This()) ReadError!u8 {
+        const reader: *Io.Reader = @constCast(&self.reader.interface);
+
+        return reader.takeByte();
+    }
+};
+
 /// High-level wrapper over unbufferred, streaming `stdout` or `stderr`.
 pub const StdOut = struct {
     writer: Io.File.Writer,
@@ -122,22 +141,6 @@ pub const StdOut = struct {
     }
 };
 
-/// High-level wrapper over buffered, streaming `stdin`.
-pub const StdIn = struct {
-    reader: Io.File.Reader,
-
-    pub inline fn init(io: Io, buffer: []u8) @This() {
-        return .{ .reader = Io.File.stdin().readerStreaming(io, buffer) };
-    }
-
-    pub const ReadError = Io.Reader.Error;
-    pub inline fn readByte(self: *@This()) ReadError!u8 {
-        const reader: *Io.Reader = @constCast(&self.reader.interface);
-
-        return reader.takeByte();
-    }
-};
-
 pub const ConfirmError = error{UnknownChar} || StdIn.ReadError || StdOut.WriteError;
 
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
@@ -155,8 +158,4 @@ pub inline fn confirm(stdin: StdIn, stdout: StdOut, query: []const u8) ConfirmEr
 
 pub inline fn exit(code: enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 }) noreturn {
     process.exit(@intFromEnum(code));
-}
-
-pub inline fn getUtf16Literal(comptime utf8Literal: []const u8) []const u16 {
-    return comptime std.unicode.utf8ToUtf16LeStringLiteral(utf8Literal);
 }

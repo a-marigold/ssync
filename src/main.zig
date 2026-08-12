@@ -310,7 +310,6 @@ const Commands = struct {
                             if (confirmErr == ConfirmError.UnknownChar) {
                                 continue;
                             }
-
                             return confirmErr;
                         };
                     };
