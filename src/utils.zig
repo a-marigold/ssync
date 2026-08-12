@@ -100,31 +100,41 @@ pub inline fn insertSlice(
     return buffer[0..newLen];
 }
 
-/// High-level wrapper over unbufferred, streaming `stdout` or `stderr` from zig std.
+/// High-level wrapper over unbufferred, streaming `stdout` or `stderr`.
 pub const StdOut = struct {
-    stdio: Io.File.Writer,
+    writer: Io.File.Writer,
 
-    pub inline fn init(io: Io, comptime stdioType: enum { Stdout, Stderr }) @This() {
-        var stdio: Io.File.Writer = switch (stdioType) {
-            .Stdout => Io.File.stdout(),
+    pub inline fn init(io: Io, comptime stdoutType: enum { Stdout, Stderr }) @This() {
+        return .{
+            .writer = switch (stdoutType) {
+                .Stdout => Io.File.stdout(),
+                .Stderr => Io.File.stderr(),
+            }.writerStreaming(io, &.{}), // Empty slice means unbuffered
 
-            .Stderr => Io.File.stderr(),
-        }.writer(io, &.{}); // Empty slice means unbuffered
-
-        // If it is not done, the first call of `stdioWriter.vtable.drain`
-        // (which is in `StdIo.print`) ends with error and turns the `mode` to `streaming` on its own
-        stdio.mode = stdio.mode.toStreaming();
-
-        return .{ .stdio = stdio };
+        };
     }
-
     pub const WriteError = Io.Writer.Error;
-
-    /// Outputs `data`.
+    /// Outputs `data` to stdio.
     pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
-        const writer = @constCast(&self.stdio.interface);
+        const writer: *Io.Writer = @constCast(&self.writer.interface);
 
         _ = try writer.vtable.drain(writer, &.{data}, 1);
+    }
+};
+
+/// High-level wrapper over buffered, streaming `stdin`.
+pub const StdIn = struct {
+    reader: Io.File.Reader,
+
+    pub inline fn init(io: Io, buffer: []u8) @This() {
+        return .{ .reader = Io.File.stdin().readerStreaming(io, buffer) };
+    }
+
+    const ReadError = Io.Reader.Error;
+    pub inline fn readByte(self: *@This()) ReadError![]const u8 {
+        const reader: *Io.Reader = @constCast(&self.reader.interface);
+
+        return reader.takeByte();
     }
 };
 
