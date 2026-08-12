@@ -14,6 +14,9 @@ const OS = builtin.os.tag;
 
 const MAX_PATH_BYTES = utils.MAX_PATH_BYTES;
 const StdOut = utils.StdOut;
+const StdIn = utils.StdIn;
+
+const ConfirmError = utils.ConfirmError;
 
 pub fn main(init: process.Init.Minimal) !void {
     const environ = init.environ;
@@ -218,9 +221,11 @@ const Commands = struct {
         StatSourceFail,
         SourceNotDir,
     };
+
     inline fn add(
         io: Io,
         env: Environ,
+        stdin: StdIn,
         stdout: *StdOut,
         rootName: []const u8,
         sourcePath: []const u8,
@@ -272,8 +277,9 @@ const Commands = struct {
 
         // Symlink the whole root
         if (destFullPath.len == rootPath.len) {
-            return try addRoot(
+            return addRoot(
                 io,
+                stdin,
                 stdout,
                 rootPath,
                 sourceFullPath,
@@ -281,8 +287,10 @@ const Commands = struct {
             );
         }
     }
+
     inline fn addRoot(
         io: Io,
+        stdin: StdIn,
         stdout: StdOut,
         rootPath: []const u8,
         sourceFullPath: []const u8,
@@ -292,9 +300,23 @@ const Commands = struct {
 
         cwd.deleteDir(io, rootPath) catch |err| {
             switch (err) {
-                Dir.DeleteDirError.FileNotFound => return AddError.RootNotExist,
                 Dir.DeleteDirError.DirNotEmpty => {
-                    try stdout.write("Root is not empty. Rewrite all files [y/n]?:\n");
+                    const isConfirmed: bool = while (true) {
+                        break utils.confirm(
+                            stdin,
+                            stdout,
+                            "Root is not empty. Rewrite all files [y/n]? ",
+                        ) catch |confirmErr| {
+                            if (confirmErr == ConfirmError.UnknownChar) {
+                                continue;
+                            }
+
+                            return confirmErr;
+                        };
+                    };
+                    if (!isConfirmed) {
+                        return;
+                    }
 
                     cwd.deleteTree(io, rootPath) catch return AddError.DeleteRootFail;
 
@@ -314,6 +336,9 @@ const Commands = struct {
                         .{ .is_directory = true },
                     );
                 },
+
+                Dir.DeleteDirError.FileNotFound => return AddError.RootNotExist,
+
                 else => return AddError.DeleteRootFail,
             }
         };
