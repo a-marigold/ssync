@@ -213,8 +213,7 @@ const Commands = struct {
         }
         return output;
     }
-
-    const CreateError = error{ RootAlreadyExists, CreateDirFail };
+    const CreateError = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail };
     pub inline fn create(
         io: Io,
         env: Environ,
@@ -223,12 +222,12 @@ const Commands = struct {
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try utils.getUserPath(env, &userPathBuffer);
 
-        const rootPath = block: {
-            const rootsDirPath = getRootsDirPath(
-                &userPathBuffer,
-                userPath.len,
-            );
+        const rootsDirPath = getRootsDirPath(
+            &userPathBuffer,
+            userPath.len,
+        );
 
+        const rootPath = block: {
             break :block try getRootPath(
                 &userPathBuffer,
                 rootsDirPath.len,
@@ -236,16 +235,31 @@ const Commands = struct {
             );
         };
 
-        Dir.cwd().createDir(
+        const cwd = Dir.cwd();
+
+        cwd.createDir(
             io,
             rootPath,
             Dir.Permissions.default_dir,
         ) catch |err| {
-            if (err == Dir.CreateDirError.PathAlreadyExists) {
-                return CreateError.RootAlreadyExists;
-            }
+            switch (err) {
+                Dir.CreateDirError.FileNotFound => {
+                    // Roots dir has not been created yet
+                    cwd.createDir(
+                        io,
+                        rootsDirPath,
+                        Dir.Permissions.default_dir,
+                    ) catch return CreateError.CreateRootsDirFail;
 
-            return CreateError.CreateDirFail;
+                    cwd.createDir(
+                        io,
+                        rootPath,
+                        Dir.Permissions.default_dir,
+                    ) catch return CreateError.CreateRootFail;
+                },
+                Dir.CreateDirError.PathAlreadyExists => return CreateError.RootAlreadyExists,
+                else => return CreateError.CreateRootFail,
+            }
         };
     }
 
