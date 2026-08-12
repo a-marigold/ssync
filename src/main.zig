@@ -19,7 +19,7 @@ const StdIn = utils.StdIn;
 const ConfirmError = utils.ConfirmError;
 
 pub fn main(init: process.Init.Minimal) !void {
-    const environ = init.environ;
+    const env = init.environ;
 
     // TODO: initialize allocator lazily only where needed
     var arena: heap.ArenaAllocator = .init(heap.page_allocator);
@@ -46,24 +46,56 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "list")) {
-            const listOutput = try Commands.list(arenaAllocator, io, environ);
+            const listOutput = try Commands.list(arenaAllocator, io, env);
 
             try stdout.write(listOutput.items);
 
             utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "create")) {
-            const rootName = args.next() orelse {
-                try stderr.write("'root' argument expected\n");
+        if (eqlCmd(cmd, "add")) {
+            const stdin: StdIn = block: {
+                // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
+                var buffer: [1]u8 = undefined;
 
+                break :block .init(io, &buffer);
+            };
+
+            const rootName = args.next() orelse {
+                try stderr.write(ErrorMsgs.argExpected("root"));
                 utils.exit(.InvalidArg);
             };
 
-            try Commands.create(io, environ, rootName);
+            const srcPath = args.next() orelse {
+                try stderr.write(ErrorMsgs.argExpected("src"));
+                utils.exit(.InvalidArg);
+            };
+
+            const destPath = args.next() orelse {
+                try stderr.write(ErrorMsgs.argExpected("dest"));
+                utils.exit(.InvalidArg);
+            };
+
+            try Commands.add(
+                io,
+                env,
+                stdin,
+                stdout,
+                rootName,
+                srcPath,
+                destPath,
+            );
+        }
+
+        if (eqlCmd(cmd, "create")) {
+            const rootName = args.next() orelse {
+                try stderr.write(ErrorMsgs.argExpected("root"));
+                utils.exit(.InvalidArg);
+            };
+
+            try Commands.create(io, env, rootName);
 
             try stdout.write("Root was successfully created\n");
-
             utils.exit(.Success);
         }
     }
@@ -73,9 +105,17 @@ pub fn main(init: process.Init.Minimal) !void {
     utils.exit(.InvalidArg);
 }
 
+const ErrorMsgs = Commands.ErrorMsgs;
+
 /// The CLI commands.
 const Commands = struct {
     const MAX_ROOT_NAME_BYTES = 60;
+
+    pub const ErrorMsgs = struct {
+        pub inline fn argExpected(comptime argName: []const u8) []const u8 {
+            return "'" ++ argName ++ "' arg expected";
+        }
+    };
 
     /// Compares `a` and `b` command names.
     inline fn eqlCmd(a: []const u8, b: []const u8) bool {
@@ -222,6 +262,9 @@ const Commands = struct {
         SrcNotDir,
     };
 
+    /// `stdin` is only used for confirmation for deletion.
+    ///
+    /// Writes output to `stdout` on its own.
     inline fn add(
         io: Io,
         env: Environ,
