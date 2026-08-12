@@ -85,19 +85,19 @@ const Commands = struct {
     pub inline fn help() []const u8 {
         const text =
             \\Commands:
-            \\  list                            Show path to the config, path to roots and all created roots.
+            \\  list                         Show path to the config, path to roots and all created roots.
             \\
-            \\  create [root]                   Create a root.
+            \\  create [root]                Create a root.
             \\
-            \\  add [root, source, dest]        'root' is name of a root to copy 'source' file to.
-            \\                                  'source' is path to a file in the system which is to be copied to 'dest'.
-            \\                                  'dest' is a path relative to 'root' to copy 'source' to.
-            \\                                  If 'source' and 'dest' are not specified, just root is created.
+            \\  add [root, src, dest]        'root' is name of a root to copy 'src' file to.
+            \\                               'src' is path to a file in the system which is to be copied to 'dest'.
+            \\                               'dest' is a path relative to 'root' to copy 'src' to.
+            \\                               If 'src' and 'dest' are not specified, just root is created.
             \\
-            \\  delete [root, ?file]            If 'file' specified, delete the 'file' in 'root'.
-            \\                                  If only 'file' is not specified, delete the whole root (prompt is shown for safety).
+            \\  delete [root, ?file]         If 'file' specified, delete the 'file' in 'root'.
+            \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
             \\
-            \\  update [root, newSource, dest]  Make 'dest' in 'root' track 'newSource' instead of the current.
+            \\  update [root, newSrc, dest]  Make 'dest' in 'root' track 'newSrc' instead of the current.
             \\
             \\Terms:
             \\  root  Synchronization root, root folder of data with a similar domain.
@@ -112,6 +112,7 @@ const Commands = struct {
     /// Returns output of the command.
     pub inline fn list(allocator: mem.Allocator, io: Io, env: Environ) !std.ArrayList(u8) {
         // Capacity 170 is enough for most cases
+
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
@@ -212,14 +213,13 @@ const Commands = struct {
             return CreateError.CreateDirFail;
         };
     }
-
     const AddError = error{
         DestPathAbsolute,
-        GetSourceFullPathFail,
+        GetSrcFullPathFail,
         RootNotExist,
         DeleteRootFail,
-        StatSourceFail,
-        SourceNotDir,
+        StatSrcFail,
+        SrcNotDir,
     };
 
     inline fn add(
@@ -228,7 +228,7 @@ const Commands = struct {
         stdin: StdIn,
         stdout: *StdOut,
         rootName: []const u8,
-        sourcePath: []const u8,
+        srcPath: []const u8,
         destPath: []const u8,
     ) (AddError || utils.UserPathError || RootPathError)!void {
         const userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
@@ -244,18 +244,18 @@ const Commands = struct {
 
         const cwd = Dir.cwd();
 
-        const sourceFullPath = block: {
-            if (path.isAbsolute(sourcePath)) {
-                break :block sourcePath;
+        const srcFullPath = block: {
+            if (path.isAbsolute(srcPath)) {
+                break :block srcPath;
             }
 
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
             const fullPathLen = cwd.realPathFile(
                 io,
-                sourcePath,
+                srcPath,
                 &buffer,
             ) catch {
-                return AddError.GetSourceFullPathFail;
+                return AddError.GetSrcFullPathFail;
             };
 
             break :block buffer[0..fullPathLen];
@@ -282,7 +282,7 @@ const Commands = struct {
                 stdin,
                 stdout,
                 rootPath,
-                sourceFullPath,
+                srcFullPath,
                 destFullPath,
             );
         }
@@ -293,7 +293,7 @@ const Commands = struct {
         stdin: StdIn,
         stdout: StdOut,
         rootPath: []const u8,
-        sourceFullPath: []const u8,
+        srcFullPath: []const u8,
         destFullPath: []const u8,
     ) AddError!void {
         const cwd = Dir.cwd();
@@ -320,18 +320,18 @@ const Commands = struct {
 
                     cwd.deleteTree(io, rootPath) catch return AddError.DeleteRootFail;
 
-                    const sourceFileKind = (cwd.statFile(
+                    const srcFileKind = (cwd.statFile(
                         io,
-                        sourceFullPath,
+                        srcFullPath,
                         .{ .follow_symlinks = false },
-                    ) catch return AddError.StatSourceFail).kind;
-                    if (sourceFileKind != .directory) {
-                        return AddError.SourceNotDir;
+                    ) catch return AddError.StatSrcFail).kind;
+                    if (srcFileKind != .directory) {
+                        return AddError.SrcNotDir;
                     }
 
                     cwd.symLink(
                         io,
-                        sourceFullPath,
+                        srcFullPath,
                         destFullPath,
                         .{ .is_directory = true },
                     );
