@@ -21,7 +21,6 @@ const ConfirmError = utils.ConfirmError;
 pub fn main(init: process.Init.Minimal) !void {
     const env = init.environ;
 
-    // TODO: initialize allocator lazily only where needed
     var arena: heap.ArenaAllocator = .init(heap.page_allocator);
     const arenaAllocator = arena.allocator();
 
@@ -62,17 +61,15 @@ pub fn main(init: process.Init.Minimal) !void {
             };
 
             const rootName = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("root"));
+                try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
                 utils.exit(.InvalidArg);
             };
-
             const srcPath = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("src"));
+                try stderr.write(ErrorMsgs.argExpected("src") ++ "\n");
                 utils.exit(.InvalidArg);
             };
-
             const destPath = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("dest"));
+                try stderr.write(ErrorMsgs.argExpected("dest") ++ "\n");
                 utils.exit(.InvalidArg);
             };
 
@@ -89,7 +86,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("root"));
+                try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
                 utils.exit(.InvalidArg);
             };
 
@@ -116,7 +113,6 @@ const Commands = struct {
             return "'" ++ argName ++ "' arg expected";
         }
     };
-
     /// Compares `a` and `b` command names.
     inline fn eqlCmd(a: []const u8, b: []const u8) bool {
         return mem.eql(u8, a, b);
@@ -204,8 +200,8 @@ const Commands = struct {
 
         try output.appendSlice(allocator, "\n\nCreatedRoots:\n");
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
-            // On macos and windows roots and config are located in one dir,
-            // so check is it a dir (root)
+            // On macos and windows roots and config
+            // are located in one dir, so check is it a dir (that is root)
             if ((comptime OS != .linux) and entry.kind != .directory) {
                 continue;
             }
@@ -215,7 +211,6 @@ const Commands = struct {
             try output.appendSlice(allocator, entry.name);
             try output.append(allocator, '\n');
         }
-
         return output;
     }
 
@@ -253,11 +248,11 @@ const Commands = struct {
             return CreateError.CreateDirFail;
         };
     }
+
     const AddError = error{
         DestPathAbsolute,
         GetSrcFullPathFail,
     };
-
     /// `stdin` is only used for confirmation for deletion.
     ///
     /// Writes output to `stdout` on its own.
@@ -331,7 +326,7 @@ const Commands = struct {
         SrcNotDir,
         DeleteRootFail,
         SymLinkRootFail,
-        ConfirmReplacingFail,
+        ConfirmationFail,
     };
     inline fn replaceRoot(
         io: Io,
@@ -351,40 +346,43 @@ const Commands = struct {
                             stdout,
                             "Root is not empty. Rewrite all files [y/n]? ",
                         ) catch |confirmErr| {
-                            if (confirmErr == ConfirmError.UnknownChar) {
-                                continue;
+                            switch (confirmErr) {
+                                ConfirmError.UnknownChar => continue,
+                                else => return ReplaceRootError.ConfirmationFail,
                             }
-                            return ReplaceRootError.ConfirmReplacingFail;
                         };
 
-                        if (!isConfirmed) {
+                        if (isConfirmed) {
+                            cwd.deleteTree(
+                                io,
+                                rootPath,
+                            ) catch return ReplaceRootError.DeleteRootFail;
+                        } else {
                             return;
                         }
                     }
-
-                    cwd.deleteTree(io, rootPath) catch return ReplaceRootError.DeleteRootFail;
-
-                    const srcFileKind = (cwd.statFile(
-                        io,
-                        srcFullPath,
-                        .{ .follow_symlinks = false },
-                    ) catch return ReplaceRootError.StatSrcFail).kind;
-
-                    if (srcFileKind != .directory) {
-                        return ReplaceRootError.SrcNotDir;
-                    }
-
-                    cwd.symLink(
-                        io,
-                        srcFullPath,
-                        rootPath,
-                        .{ .is_directory = true },
-                    ) catch return ReplaceRootError.SymLinkRootFail;
                 },
                 Dir.DeleteDirError.FileNotFound => return ReplaceRootError.RootNotExist,
                 else => return ReplaceRootError.DeleteRootFail,
             }
         };
+
+        const srcFileKind = (cwd.statFile(
+            io,
+            srcFullPath,
+            .{ .follow_symlinks = false },
+        ) catch return ReplaceRootError.StatSrcFail).kind;
+
+        if (srcFileKind != .directory) {
+            return ReplaceRootError.SrcNotDir;
+        }
+
+        cwd.symLink(
+            io,
+            srcFullPath,
+            rootPath,
+            .{ .is_directory = true },
+        ) catch return ReplaceRootError.SymLinkRootFail;
     }
 
     /// Inserts a platfrom-specific relative
