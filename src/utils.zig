@@ -130,13 +130,28 @@ pub const StdIn = struct {
         return .{ .reader = Io.File.stdin().readerStreaming(io, buffer) };
     }
 
-    const ReadError = Io.Reader.Error;
-    pub inline fn readByte(self: *@This()) ReadError![]const u8 {
+    pub const ReadError = Io.Reader.Error;
+    pub inline fn readByte(self: *@This()) ReadError!u8 {
         const reader: *Io.Reader = @constCast(&self.reader.interface);
 
         return reader.takeByte();
     }
 };
+
+pub const ConfirmError = error{UnknownChar} || StdIn.ReadError || StdOut.WriteError;
+
+/// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
+pub inline fn confirm(stdin: StdIn, stdout: StdOut, query: []const u8) ConfirmError!bool {
+    try stdout.write(query);
+
+    const input = try stdin.readByte();
+
+    return switch (input) {
+        'y' => true,
+        'n' => false,
+        else => ConfirmError.UnknownChar,
+    };
+}
 
 pub inline fn exit(code: enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 }) noreturn {
     process.exit(@intFromEnum(code));
