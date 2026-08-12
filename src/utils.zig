@@ -144,7 +144,7 @@ pub const StdOut = struct {
 pub const ConfirmError = error{UnknownChar} || StdIn.ReadError || StdOut.WriteError;
 
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
-pub inline fn confirm(stdin: StdIn, stdout: StdOut, query: []const u8) ConfirmError!bool {
+pub inline fn confirm(stdin: *StdIn, stdout: *StdOut, query: []const u8) ConfirmError!bool {
     try stdout.write(query);
 
     const input = try stdin.readByte();

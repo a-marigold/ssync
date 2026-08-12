@@ -54,7 +54,7 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "add")) {
-            const stdin: StdIn = block: {
+            var stdin: StdIn = block: {
                 // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
                 var buffer: [1]u8 = undefined;
 
@@ -79,8 +79,8 @@ pub fn main(init: process.Init.Minimal) !void {
             try Commands.add(
                 io,
                 env,
-                stdin,
-                stdout,
+                &stdin,
+                &stdout,
                 rootName,
                 srcPath,
                 destPath,
@@ -256,10 +256,6 @@ const Commands = struct {
     const AddError = error{
         DestPathAbsolute,
         GetSrcFullPathFail,
-        RootNotExist,
-        DeleteRootFail,
-        StatSrcFail,
-        SrcNotDir,
     };
 
     /// `stdin` is only used for confirmation for deletion.
@@ -268,19 +264,19 @@ const Commands = struct {
     inline fn add(
         io: Io,
         env: Environ,
-        stdin: StdIn,
+        stdin: *StdIn,
         stdout: *StdOut,
         rootName: []const u8,
         srcPath: []const u8,
         destPath: []const u8,
-    ) (AddError || utils.UserPathError || RootPathError)!void {
-        const userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try utils.getUserPath(env, userPathBuffer);
+    ) (AddError || utils.UserPathError || RootPathError || ReplaceRootError)!void {
+        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
+        const userPath = try utils.getUserPath(env, &userPathBuffer);
 
-        const rootsDirPath = getRootsDirPath(userPathBuffer, userPath.len);
+        const rootsDirPath = getRootsDirPath(&userPathBuffer, userPath.len);
 
         const rootPath = try getRootPath(
-            userPathBuffer,
+            &userPathBuffer,
             rootsDirPath.len,
             rootName,
         );
@@ -320,32 +316,37 @@ const Commands = struct {
 
         // Symlink the whole root
         if (destFullPath.len == rootPath.len) {
-            return addRoot(
+            return replaceRoot(
                 io,
                 stdin,
                 stdout,
                 rootPath,
                 srcFullPath,
-                destFullPath,
             );
         }
     }
-
-    inline fn addRoot(
+    const ReplaceRootError = error{
+        RootNotExist,
+        StatSrcFail,
+        SrcNotDir,
+        DeleteRootFail,
+        SymLinkRootFail,
+        ConfirmReplacingFail,
+    };
+    inline fn replaceRoot(
         io: Io,
-        stdin: StdIn,
-        stdout: StdOut,
+        stdin: *StdIn,
+        stdout: *StdOut,
         rootPath: []const u8,
         srcFullPath: []const u8,
-        destFullPath: []const u8,
-    ) AddError!void {
+    ) ReplaceRootError!void {
         const cwd = Dir.cwd();
 
         cwd.deleteDir(io, rootPath) catch |err| {
             switch (err) {
                 Dir.DeleteDirError.DirNotEmpty => {
-                    const isConfirmed: bool = while (true) {
-                        break utils.confirm(
+                    while (true) {
+                        const isConfirmed = utils.confirm(
                             stdin,
                             stdout,
                             "Root is not empty. Rewrite all files [y/n]? ",
@@ -353,35 +354,35 @@ const Commands = struct {
                             if (confirmErr == ConfirmError.UnknownChar) {
                                 continue;
                             }
-                            return confirmErr;
+                            return ReplaceRootError.ConfirmReplacingFail;
                         };
-                    };
-                    if (!isConfirmed) {
-                        return;
+
+                        if (!isConfirmed) {
+                            return;
+                        }
                     }
 
-                    cwd.deleteTree(io, rootPath) catch return AddError.DeleteRootFail;
+                    cwd.deleteTree(io, rootPath) catch return ReplaceRootError.DeleteRootFail;
 
                     const srcFileKind = (cwd.statFile(
                         io,
                         srcFullPath,
                         .{ .follow_symlinks = false },
-                    ) catch return AddError.StatSrcFail).kind;
+                    ) catch return ReplaceRootError.StatSrcFail).kind;
+
                     if (srcFileKind != .directory) {
-                        return AddError.SrcNotDir;
+                        return ReplaceRootError.SrcNotDir;
                     }
 
                     cwd.symLink(
                         io,
                         srcFullPath,
-                        destFullPath,
+                        rootPath,
                         .{ .is_directory = true },
-                    );
+                    ) catch return ReplaceRootError.SymLinkRootFail;
                 },
-
-                Dir.DeleteDirError.FileNotFound => return AddError.RootNotExist,
-
-                else => return AddError.DeleteRootFail,
+                Dir.DeleteDirError.FileNotFound => return ReplaceRootError.RootNotExist,
+                else => return ReplaceRootError.DeleteRootFail,
             }
         };
     }
