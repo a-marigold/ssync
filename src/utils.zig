@@ -165,3 +165,11 @@ pub inline fn confirm(stdin: *StdIn, stdout: *StdOut, query: []const u8) Confirm
 pub inline fn exit(code: enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 }) noreturn {
     process.exit(@intFromEnum(code));
 }
+
+pub fn __debug__(comptime fmt: []const u8, args: anytype) void {
+    if (builtin.mode != .debug) {
+        @compileError("'__debug__' is only for 'Debug' mode");
+    }
+
+    std.debug.print(fmt ++ "\n", args);
+}

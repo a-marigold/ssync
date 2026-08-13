@@ -16,7 +16,7 @@ const MAX_PATH_BYTES = utils.MAX_PATH_BYTES;
 const StdOut = utils.StdOut;
 const StdIn = utils.StdIn;
 
-const ConfirmError = utils.ConfirmError;
+const __debug__ = utils.__debug__;
 
 pub fn main(init: process.Init.Minimal) !void {
     const env = init.environ;
@@ -148,11 +148,11 @@ const Commands = struct {
     /// Returns output of the command.
     pub inline fn list(allocator: mem.Allocator, io: Io, env: Environ) !std.ArrayList(u8) {
         // Capacity 170 is enough for most cases
-
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try utils.getUserPath(env, &userPathBuffer);
+
         const rootsDirPath = getRootsDirPath(
             &userPathBuffer,
             userPath.len,
@@ -175,7 +175,7 @@ const Commands = struct {
             const rootsDir = cwd.openDir(
                 io,
                 rootsDirPath,
-                .{ .iterate = true },
+                .{ .iterate = true, .follow_symlinks = true },
             ) catch |err| {
                 if (err == Dir.OpenError.FileNotFound) {
                     try output.appendSlice(allocator, noRootCreatedMsg);
@@ -186,7 +186,12 @@ const Commands = struct {
                 return err;
             };
 
-            break :block rootsDir.iterate().reader;
+            var buffer: [2048]u8 align(8) = undefined;
+
+            break :block Dir.Reader.init(
+                rootsDir,
+                &buffer,
+            );
         };
 
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
@@ -198,7 +203,7 @@ const Commands = struct {
         try output.appendSlice(allocator, "Roots are located in: ");
         try output.appendSlice(allocator, rootsDirPath);
 
-        try output.appendSlice(allocator, "\n\nCreatedRoots:\n");
+        try output.appendSlice(allocator, "\n\nCreated roots:\n");
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
             // are located in one dir, so check is it a dir (that is root)
@@ -361,7 +366,7 @@ const Commands = struct {
                             "Root is not empty. Rewrite all files [y/n]? ",
                         ) catch |confirmErr| {
                             switch (confirmErr) {
-                                ConfirmError.UnknownChar => continue,
+                                utils.ConfirmError.UnknownChar => continue,
                                 else => return ReplaceRootError.ConfirmationFail,
                             }
                         };
@@ -409,18 +414,16 @@ const Commands = struct {
         pathBuffer: *[MAX_PATH_BYTES]u8,
         userPathLen: usize,
     ) []const u8 {
-        const rootsDirRelativePath = switch (OS) {
-            .linux => "/.local/share/ssync",
-            .macos => "/Library/Application Support/ssync",
-            .windows => "\\ssync",
-            else => unreachable,
-        };
-
         return utils.insertSlice(
             u8,
             pathBuffer,
             userPathLen,
-            rootsDirRelativePath,
+            switch (OS) {
+                .linux => "/.local/share/ssync",
+                .macos => "/Library/Application Support/ssync",
+                .windows => "\\ssync",
+                else => unreachable,
+            },
         );
     }
 
@@ -459,18 +462,16 @@ const Commands = struct {
     ///
     /// Returns a slice of the full path.
     inline fn getConfigPath(pathBuffer: *[MAX_PATH_BYTES]u8, userPathLen: usize) []const u8 {
-        const configRelativePath = switch (OS) {
-            .linux => "/.config/ssync.toml",
-            .macos => "/Library/Application Support/ssync/ssync.toml",
-            .windows => "\\ssync\\ssync.toml",
-            else => unreachable,
-        };
-
         return utils.insertSlice(
             u8,
             pathBuffer,
             userPathLen,
-            configRelativePath,
+            switch (OS) {
+                .linux => "/.config/ssync.toml",
+                .macos => "/Library/Application Support/ssync/ssync.toml",
+                .windows => "\\ssync\\ssync.toml",
+                else => unreachable,
+            },
         );
     }
 };
