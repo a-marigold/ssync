@@ -12,7 +12,7 @@ const utils = @import("utils.zig");
 
 const OS = builtin.os.tag;
 
-const MAX_PATH_BYTES = utils.MAX_PATH_BYTES;
+const MAX_PATH_BYTES = Io.Dir.max_path_bytes;
 const StdOut = utils.StdOut;
 const StdIn = utils.StdIn;
 
@@ -218,6 +218,7 @@ const Commands = struct {
         }
         return output;
     }
+
     const CreateError = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail };
     pub inline fn create(
         io: Io,
@@ -381,7 +382,9 @@ const Commands = struct {
                         }
                     }
                 },
+
                 Dir.DeleteDirError.FileNotFound => return ReplaceRootError.RootNotExist,
+
                 else => return ReplaceRootError.DeleteRootFail,
             }
         };
@@ -404,16 +407,13 @@ const Commands = struct {
         ) catch return ReplaceRootError.SymLinkRootFail;
     }
 
-    /// Inserts a platfrom-specific relative
-    /// path of the roots dir to `pathBuffer` starting from `userPathLen`.
+    /// Starting from `userPathLen`, copies platform-specific relative path
+    /// of the roots dir to `pathBuffer`, which already contains user path
     ///
     /// `userPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full roots dir path.
-    inline fn getRootsDirPath(
-        pathBuffer: *[MAX_PATH_BYTES]u8,
-        userPathLen: usize,
-    ) []const u8 {
+    inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
         return utils.insertSlice(
             u8,
             pathBuffer,
@@ -428,13 +428,16 @@ const Commands = struct {
     }
 
     const RootPathError = error{RootNameTooLong};
-    /// Copies a slash and `rootName` to `pathBuffer` starting from `rootsDirPathLen`.
+    /// Starting from `rootsDirPathLen`, copies `rootName` to `pathBuffer`,
+    /// which already contains roots dir path.
     ///
     /// `rootsDirPathLen` must not include trailing slash.
     ///
+    /// Resolves slashes.
+    ///
     /// Returns a slice of the full root path.
     inline fn getRootPath(
-        pathBuffer: *[MAX_PATH_BYTES]u8,
+        pathBuffer: []u8,
         rootsDirPathLen: usize,
         rootName: []const u8,
     ) RootPathError![]const u8 {
@@ -456,12 +459,13 @@ const Commands = struct {
         );
     }
 
-    /// Copies platfrom specific relative path to the config to `pathBuffer` starting from `userPathLen`.
+    /// Starting from `userPathLEn`, copies platfrom specific relative path
+    /// of the config to `pathBuffer`, which already contains user path.
     ///
     /// `userPathLen` must not include trailing slash.
     ///
     /// Returns a slice of the full path.
-    inline fn getConfigPath(pathBuffer: *[MAX_PATH_BYTES]u8, userPathLen: usize) []const u8 {
+    inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
         return utils.insertSlice(
             u8,
             pathBuffer,

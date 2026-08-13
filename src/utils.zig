@@ -8,24 +8,23 @@ const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
 
-pub const MAX_PATH_BYTES = Io.Dir.max_path_bytes;
-
 pub const UserPathError = error{
     GetUserProfileEnvFail,
 
     /// Only on windows.
     ConvertPathToUtf8Fail,
-
     GetHomeEnvFail,
 };
 
 /// Writes to `buffer` the path to user dir.
 ///
+/// `buffer` must have length at list as the max path bytes of system.
+///
 /// Returns a slice of the path in `buffer` or `UserPathError`.
 pub inline fn getUserPath(
     /// `process.Environ` from which to read the user dir path.
     env: process.Environ,
-    buffer: *[MAX_PATH_BYTES]u8,
+    buffer: []u8,
 ) UserPathError![]const u8 {
     if (OS == .windows) {
         const utf16Path = env.getWindows(
@@ -55,6 +54,8 @@ pub inline fn getUserPath(
 /// If `relativePath` is `.` or `./`, returns `pathBuffer[0..firstPathLen]`.
 /// Otherwise copies `relativePath` to `pathBuffer` starting from `firstPathLen`.
 ///
+/// `pathBuffer` must have length at least as max path bytes of system.
+///
 /// `pathBuffer[0..firstPathLen]` must contain the firstPath without trailing slash.
 ///
 /// `relativePath` must be relative and have length at least 1.
@@ -63,7 +64,7 @@ pub inline fn getUserPath(
 ///
 /// Returns a slice of the result in `pathBuffer`.
 pub inline fn joinPath(
-    pathBuffer: *[MAX_PATH_BYTES]u8,
+    pathBuffer: []u8,
     firstPathLen: usize,
     relativePath: []const u8,
 ) []const u8 {
