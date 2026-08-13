@@ -1,6 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const Io = std.Io;
+const Dir = Io.Dir;
 const process = std.process;
 const unicode = std.unicode;
 const builtin = @import("builtin");
@@ -67,6 +68,7 @@ pub inline fn joinPath(
     relativePath: []const u8,
 ) []const u8 {
     const slash = if (OS == .windows) '\\' else '/';
+
     const slashLen = 1;
 
     // If it starts with './', just copy including slash
@@ -82,6 +84,10 @@ pub inline fn joinPath(
     pathBuffer[firstPathLen] = slash;
 
     return insertSlice(u8, pathBuffer, firstPathLen + slashLen, relativePath);
+}
+
+pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
+    return dir.createDir(io, path, Dir.Permissions.default_dir);
 }
 
 /// Inserts `slice` to `buffer` starting from `startIndex`.

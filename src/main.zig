@@ -237,24 +237,24 @@ const Commands = struct {
 
         const cwd = Dir.cwd();
 
-        cwd.createDir(
+        utils.createDir(
             io,
+            cwd,
             rootPath,
-            Dir.Permissions.default_dir,
         ) catch |err| {
             switch (err) {
                 Dir.CreateDirError.FileNotFound => {
                     // Roots dir has not been created yet
-                    cwd.createDir(
+                    utils.createDir(
                         io,
-                        rootsDirPath,
-                        Dir.Permissions.default_dir,
+                        cwd,
+                        rootPath,
                     ) catch return CreateError.CreateRootsDirFail;
 
-                    cwd.createDir(
+                    utils.createDir(
                         io,
+                        cwd,
                         rootPath,
-                        Dir.Permissions.default_dir,
                     ) catch return CreateError.CreateRootFail;
                 },
                 Dir.CreateDirError.PathAlreadyExists => return CreateError.RootAlreadyExists,
