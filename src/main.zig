@@ -97,7 +97,7 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "config")) {
-            try Commands.config(env, &stdout);
+            try Commands.config(io, env, &stdout, &stderr);
             utils.exit(.Success);
         }
     }
@@ -225,7 +225,7 @@ const Commands = struct {
     }
 
     /// Writes output to `stdout`.
-    pub fn config(env: Environ, stdout: *StdOut) !void {
+    pub fn config(io: Io, env: Environ, stdout: *StdOut, stderr: *StdOut) !void {
         const outputEndChar = '\n';
         const outputEndCharLen = 1;
 
@@ -237,9 +237,35 @@ const Commands = struct {
             break :block getConfigPath(&output, userPath.len);
         };
 
+        createConfig(io, configPath) catch {
+            try stderr.write("Failed to create config\n");
+        };
+
         output[configPath.len] = outputEndChar;
 
         try stdout.write(output[0 .. configPath.len + outputEndCharLen]);
+    }
+
+    inline fn createConfig(io: Io, configPath: []const u8) !void {
+        const cwd = Dir.cwd();
+
+        // Happy path is when config exists, Sad path is when does not
+        _ = cwd.statFile(
+            io,
+            configPath,
+            .{ .follow_symlinks = false },
+        ) catch |err| {
+            switch (err) {
+                Dir.StatFileError.FileNotFound => {
+                    try cwd.writeFile(io, .{
+                        .sub_path = configPath,
+                        .data = SsyncConfig.CONFIG_FILE_TEXT,
+                        .flags = .{},
+                    });
+                },
+                else => return err,
+            }
+        };
     }
 
     const CreateError = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail };
@@ -501,4 +527,11 @@ const Commands = struct {
             },
         );
     }
+};
+
+const SsyncConfig = struct {
+    // TODO: add text
+    pub const CONFIG_FILE_TEXT =
+        \\
+    ;
 };
