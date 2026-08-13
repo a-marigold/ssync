@@ -95,6 +95,11 @@ pub fn main(init: process.Init.Minimal) !void {
             try stdout.write("Root was successfully created\n");
             utils.exit(.Success);
         }
+
+        if (eqlCmd(cmd, "config")) {
+            try Commands.config(env, &stdout);
+            utils.exit(.Success);
+        }
     }
 
     try stderr.write(Commands.help());
@@ -118,7 +123,7 @@ const Commands = struct {
         return mem.eql(u8, a, b);
     }
 
-    pub inline fn help() []const u8 {
+    pub fn help() []const u8 {
         const text =
             \\Commands:
             \\  list                         Show path to the config, path to roots and all created roots.
@@ -146,7 +151,7 @@ const Commands = struct {
     }
 
     /// Returns output of the command.
-    pub inline fn list(allocator: mem.Allocator, io: Io, env: Environ) !std.ArrayList(u8) {
+    pub fn list(allocator: mem.Allocator, io: Io, env: Environ) !std.ArrayList(u8) {
         // Capacity 170 is enough for most cases
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
@@ -219,8 +224,26 @@ const Commands = struct {
         return output;
     }
 
+    /// Writes output to `stdout`.
+    pub fn config(env: Environ, stdout: *StdOut) !void {
+        const outputEndChar = '\n';
+        const outputEndCharLen = 1;
+
+        var output: [MAX_PATH_BYTES + outputEndCharLen]u8 = undefined;
+
+        const configPath = block: {
+            const userPath = try utils.getUserPath(env, &output);
+
+            break :block getConfigPath(&output, userPath.len);
+        };
+
+        output[configPath.len] = outputEndChar;
+
+        try stdout.write(output[0 .. configPath.len + outputEndCharLen]);
+    }
+
     const CreateError = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail };
-    pub inline fn create(
+    pub fn create(
         io: Io,
         env: Environ,
         rootName: []const u8,
@@ -276,7 +299,7 @@ const Commands = struct {
     /// `stdin` is only used for confirmation for deletion.
     ///
     /// Writes output to `stdout` on its own.
-    inline fn add(
+    pub fn add(
         io: Io,
         env: Environ,
         stdin: *StdIn,
