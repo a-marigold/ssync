@@ -44,10 +44,7 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "list")) {
-            const listOutput = try Commands.list(arenaAllocator, io, env);
-
-            try stdout.write(listOutput.items);
-
+            try Commands.list(arenaAllocator, io, env, &stdout);
             utils.exit(.Success);
         }
 
@@ -129,7 +126,7 @@ const Commands = struct {
             \\Commands:
             \\  list                         Show path to roots and all created roots.
             \\
-            \\  config                       Show path to config and create one if it doesn't exist.
+            \\  config                       Show path to config and create it if doesn't exist.
             \\
             \\  create [root]                Create a root.
             \\
@@ -150,11 +147,11 @@ const Commands = struct {
             \\
         ;
 
-        return text;
+        try stdout.write(text);
     }
 
-    /// Returns output of the command.
-    pub fn list(allocator: mem.Allocator, io: Io, env: Environ) !std.ArrayList(u8) {
+    /// Writes output to `stdout`.
+    pub fn list(allocator: mem.Allocator, io: Io, env: Environ, stdout: *StdOut) !void {
         // Capacity 170 is enough for most cases
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
@@ -188,7 +185,7 @@ const Commands = struct {
                 if (err == Dir.OpenError.FileNotFound) {
                     try output.appendSlice(allocator, noRootCreatedMsg);
 
-                    return output;
+                    return stdout.write(output.items);
                 }
 
                 return err;
@@ -205,7 +202,7 @@ const Commands = struct {
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
             try output.appendSlice(allocator, noRootCreatedMsg);
 
-            return output;
+            return stdout.write(output.items);
         };
 
         try output.appendSlice(allocator, "Roots are located in: ");
@@ -224,7 +221,8 @@ const Commands = struct {
             try output.appendSlice(allocator, entry.name);
             try output.append(allocator, '\n');
         }
-        return output;
+
+        try stdout.write(output.items);
     }
 
     /// Writes output to `stdout`.
@@ -248,7 +246,6 @@ const Commands = struct {
 
         try stdout.write(output[0 .. configPath.len + outputEndCharLen]);
     }
-
     inline fn createConfig(io: Io, configPath: []const u8) !void {
         const cwd = Dir.cwd();
 
