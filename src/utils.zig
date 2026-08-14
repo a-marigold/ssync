@@ -109,6 +109,28 @@ pub inline fn insertSlice(
     return buffer[0..newLen];
 }
 
+/// Concats every string of `strings` into `buffer`.
+///
+/// `buffer` must have enough length.
+pub inline fn concatStrings(buffer: []u8, strings: anytype) []const u8 {
+    inline for (0..strings.len) |index| {
+        const string = strings[index];
+
+        comptime {
+            const stringInfo = @typeInfo(string);
+
+            if ((stringInfo == .array and stringInfo.array.child != u8) or
+                (stringInfo == .pointer and stringInfo.pointer.child != u8) or
+                true)
+            {
+                @compileError("Expected string");
+            }
+        }
+
+        @memcpy(buffer[0..string.len], string);
+    }
+}
+
 /// High-level wrapper over buffered, streaming `stdin`.
 pub const StdIn = struct {
     reader: Io.File.Reader,
