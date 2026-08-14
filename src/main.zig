@@ -504,7 +504,7 @@ const Commands = struct {
                     const query = block: {
                         var buffer: []u8 = undefined;
 
-                        break :block utils.concatStrings(&buffer, .{
+                        break :block utils.concatStr(&buffer, .{
                             "'", fullFilePath, "' is a dir. Delete all files [y/n]?",
                         });
                     };
@@ -540,7 +540,7 @@ const Commands = struct {
     ///
     /// Returns a slice of the full roots dir path.
     inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-        return utils.insertSlice(
+        return utils.insertStr(
             u8,
             pathBuffer,
             userPathLen,
@@ -578,7 +578,7 @@ const Commands = struct {
         const slashLen = 1;
 
         pathBuffer[rootsDirPathLen] = slash;
-        return utils.insertSlice(
+        return utils.insertStr(
             u8,
             pathBuffer,
             rootsDirPathLen + slashLen,
@@ -593,7 +593,7 @@ const Commands = struct {
     ///
     /// Returns a slice of the full path.
     inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-        return utils.insertSlice(
+        return utils.insertStr(
             u8,
             pathBuffer,
             userPathLen,

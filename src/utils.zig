@@ -79,32 +79,31 @@ pub inline fn joinPath(
             return pathBuffer[0..firstPathLen];
         }
 
-        return insertSlice(u8, pathBuffer, firstPathLen, relativePath[1..]);
+        return insertStr(u8, pathBuffer, firstPathLen, relativePath[1..]);
     }
 
     pathBuffer[firstPathLen] = slash;
 
-    return insertSlice(u8, pathBuffer, firstPathLen + slashLen, relativePath);
+    return insertStr(u8, pathBuffer, firstPathLen + slashLen, relativePath);
 }
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
     return dir.createDir(io, path, Dir.Permissions.default_dir);
 }
 
-/// Inserts `slice` to `buffer` starting from `startIndex`.
+/// Inserts `string` to `buffer` starting from `startIndex`.
 ///
-/// `buffer` is assumed to have enough length to receive `slice`.
+/// `buffer` is assumed to have enough length to receive `string`.
 ///
-/// Returns `buffer[0..resultLen]`.
-pub inline fn insertSlice(
-    comptime T: type,
-    buffer: []T,
+/// Returns a slice of the result in `buffer`.
+pub inline fn insertStr(
+    buffer: []u8,
     startIndex: usize,
-    slice: []const T,
+    string: []const u8,
 ) []const u8 {
-    const newLen = startIndex + slice.len;
+    const newLen = startIndex + string.len;
 
-    @memcpy(buffer[startIndex..newLen], slice);
+    @memcpy(buffer[startIndex..newLen], string);
 
     return buffer[0..newLen];
 }
@@ -112,7 +111,7 @@ pub inline fn insertSlice(
 /// Concats every string of `strings` into `buffer`.
 ///
 /// `buffer` must have enough length.
-pub inline fn concatStrings(buffer: []u8, strings: anytype) []const u8 {
+pub inline fn concatStr(buffer: []u8, strings: anytype) []const u8 {
     inline for (0..strings.len) |index| {
         const string = strings[index];
 
