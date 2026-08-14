@@ -39,8 +39,7 @@ pub fn main(init: process.Init.Minimal) !void {
         const eqlCmd = Commands.eqlCmd;
 
         if (eqlCmd(cmd, "--help")) {
-            try stdout.write(Commands.help());
-
+            try Commands.help(&stdout);
             utils.exit(.Success);
         }
 
@@ -102,7 +101,7 @@ pub fn main(init: process.Init.Minimal) !void {
         }
     }
 
-    try stderr.write(Commands.help());
+    try Commands.help(&stderr);
 
     utils.exit(.InvalidArg);
 }
@@ -118,15 +117,19 @@ const Commands = struct {
             return "'" ++ argName ++ "' arg expected";
         }
     };
+
     /// Compares `a` and `b` command names.
     inline fn eqlCmd(a: []const u8, b: []const u8) bool {
         return mem.eql(u8, a, b);
     }
 
-    pub fn help() []const u8 {
+    /// Write the help text to `stdout`.
+    pub fn help(stdout: *StdOut) !void {
         const text =
             \\Commands:
-            \\  list                         Show path to the config, path to roots and all created roots.
+            \\  list                         Show path to roots and all created roots.
+            \\
+            \\  config                       Show path to config and create one if it doesn't exist.
             \\
             \\  create [root]                Create a root.
             \\
