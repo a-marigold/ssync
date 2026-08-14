@@ -60,10 +60,12 @@ pub fn main(init: process.Init.Minimal) !void {
                 try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
                 utils.exit(.InvalidArg);
             };
+
             const srcPath = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("src") ++ "\n");
                 utils.exit(.InvalidArg);
             };
+
             const destPath = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("dest") ++ "\n");
                 utils.exit(.InvalidArg);
@@ -78,6 +80,8 @@ pub fn main(init: process.Init.Minimal) !void {
                 srcPath,
                 destPath,
             );
+
+            utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "create")) {
@@ -86,9 +90,7 @@ pub fn main(init: process.Init.Minimal) !void {
                 utils.exit(.InvalidArg);
             };
 
-            try Commands.create(io, env, rootName);
-
-            try stdout.write("Root was successfully created\n");
+            try Commands.create(io, env, &stdout, rootName);
             utils.exit(.Success);
         }
 
@@ -162,15 +164,6 @@ const Commands = struct {
             &userPathBuffer,
             userPath.len,
         );
-        const configPath = block: {
-            // Copy the user path not to rewrite `rootsDirPath`
-            var buffer: [MAX_PATH_BYTES]u8 = userPathBuffer;
-            break :block getConfigPath(&buffer, userPath.len);
-        };
-
-        try output.appendSlice(allocator, "Config should be located at: ");
-        try output.appendSlice(allocator, configPath);
-        try output.append(allocator, '\n');
 
         const noRootCreatedMsg = "\nNo root created yet\n";
 
@@ -219,6 +212,7 @@ const Commands = struct {
             try output.append(allocator, ' ');
             try output.append(allocator, ' ');
             try output.appendSlice(allocator, entry.name);
+
             try output.append(allocator, '\n');
         }
 
@@ -272,8 +266,9 @@ const Commands = struct {
     pub fn create(
         io: Io,
         env: Environ,
+        stdout: *StdOut,
         rootName: []const u8,
-    ) (CreateError || utils.UserPathError || RootPathError)!void {
+    ) !void {
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try utils.getUserPath(env, &userPathBuffer);
 
@@ -300,6 +295,7 @@ const Commands = struct {
             switch (err) {
                 Dir.CreateDirError.FileNotFound => {
                     // Roots dir has not been created yet
+
                     utils.createDir(
                         io,
                         cwd,
@@ -316,6 +312,8 @@ const Commands = struct {
                 else => return CreateError.CreateRootFail,
             }
         };
+
+        try stdout.write("Root was successfully created\n");
     }
 
     const AddError = error{
