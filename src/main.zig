@@ -3,6 +3,7 @@ const mem = std.mem;
 const heap = std.heap;
 const Io = std.Io;
 const Dir = Io.Dir;
+const File = Io.File;
 const path = Dir.path;
 const process = std.process;
 const Environ = process.Environ;
@@ -135,7 +136,6 @@ const Commands = struct {
             \\  add [root, src, dest]        'root' is name of a root to copy 'src' file to.
             \\                               'src' is path to a file in the system which is to be copied to 'dest'.
             \\                               'dest' is a path relative to 'root' to copy 'src' to.
-            \\                               If 'src' and 'dest' are not specified, just root is created.
             \\
             \\  delete [root, ?file]         If 'file' specified, delete the 'file' in 'root'.
             \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
@@ -420,18 +420,16 @@ const Commands = struct {
                         };
 
                         if (isConfirmed) {
-                            cwd.deleteTree(
+                            return cwd.deleteTree(
                                 io,
                                 rootPath,
-                            ) catch return ReplaceRootError.DeleteRootFail;
+                            ) catch ReplaceRootError.DeleteRootFail;
                         } else {
                             return;
                         }
                     }
                 },
-
                 Dir.DeleteDirError.FileNotFound => return ReplaceRootError.RootNotExist,
-
                 else => return ReplaceRootError.DeleteRootFail,
             }
         };
@@ -454,6 +452,87 @@ const Commands = struct {
         ) catch return ReplaceRootError.SymLinkRootFail;
     }
 
+    // Writes output to `stdout`.
+    pub fn delete(
+        io: Io,
+        env: Environ,
+        stdin: *StdIn,
+        stdout: *StdOut,
+        rootName: []const u8,
+        rootFilePath: ?[]const u8,
+    ) void {
+        const userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
+        const userPath = try utils.getUserPath(env, &userPathBuffer);
+
+        const rootPath = block: {
+            const rootsDirPath = getRootsDirPath(
+                &userPathBuffer,
+                userPath.len,
+            );
+
+            break :block try getRootPath(
+                &userPathBuffer,
+                rootsDirPath.len,
+                rootName,
+            );
+        };
+
+        const cwd = Dir.cwd();
+
+        if (rootFilePath) |filePath| {
+            if (path.isAbsolute(filePath)) {
+                return;
+            }
+
+            const fullFilePath = utils.joinPath(
+                &userPathBuffer,
+                rootPath.len,
+                rootFilePath,
+            );
+
+            const fileKind = (try cwd.statFile(
+                io,
+                fullFilePath,
+                .{ .follow_symlinks = true },
+            )).kind;
+
+            switch (fileKind) {
+                File.Kind.file => {
+                    try cwd.deleteFile(io, fullFilePath);
+                },
+                File.Kind.directory => {
+                    const query = block: {
+                        var buffer: []u8 = undefined;
+
+                        break :block utils.concatStrings(&buffer, .{
+                            "'", fullFilePath, "' is a dir. Delete all files [y/n]?",
+                        });
+                    };
+
+                    while (true) {
+                        const isConfirmed = utils.confirm(
+                            stdin,
+                            stdout,
+                            query,
+                        ) catch |err| {
+                            switch (err) {
+                                utils.ConfirmError.UnknownChar => continue,
+                                else => {},
+                            }
+                        };
+
+                        if (isConfirmed) {
+                            return cwd.deleteTree(io, fullFilePath) catch {};
+                        } else {
+                            return;
+                        }
+                    }
+                },
+                else => unreachable,
+            }
+        }
+    }
+
     /// Starting from `userPathLen`, copies platform-specific relative path
     /// of the roots dir to `pathBuffer`, which already contains user path
     ///
@@ -469,6 +548,7 @@ const Commands = struct {
                 .linux => "/.local/share/ssync",
                 .macos => "/Library/Application Support/ssync",
                 .windows => "\\ssync",
+
                 else => unreachable,
             },
         );
