@@ -18,5 +18,8 @@ pub fn build(b: *std.Build) void {
         .unwind_tables = if (isRelease) .none else null,
     }) });
 
+    const checkStep = b.step("check", "Check without emiting binary");
+    checkStep.dependOn(&exe.step);
+
     b.installArtifact(exe);
 }
