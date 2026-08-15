@@ -311,13 +311,10 @@ const Add = struct {
         }
     }
     const ReplaceRootError = error{
-        RootNotExist,
         StatSrcFail,
         SrcNotDir,
-        DeleteRootFail,
         SymLinkRootFail,
-        ConfirmationFail,
-    };
+    } || Delete.DeleteRootError;
     inline fn replaceRoot(
         io: Io,
         stdin: *StdIn,
@@ -327,35 +324,7 @@ const Add = struct {
     ) ReplaceRootError!void {
         const cwd = Dir.cwd();
 
-        cwd.deleteDir(io, rootPath) catch |err| {
-            switch (err) {
-                Dir.DeleteDirError.DirNotEmpty => {
-                    while (true) {
-                        const isConfirmed = Utils.confirm(
-                            stdin,
-                            stdout,
-                            "Root is not empty. Rewrite all files [y/n]? ",
-                        ) catch |confirmErr| {
-                            switch (confirmErr) {
-                                Utils.ConfirmError.UnknownChar => continue,
-                                else => return ReplaceRootError.ConfirmationFail,
-                            }
-                        };
-
-                        if (isConfirmed) {
-                            return cwd.deleteTree(
-                                io,
-                                rootPath,
-                            ) catch ReplaceRootError.DeleteRootFail;
-                        } else {
-                            return;
-                        }
-                    }
-                },
-                Dir.DeleteDirError.FileNotFound => return ReplaceRootError.RootNotExist,
-                else => return ReplaceRootError.DeleteRootFail,
-            }
-        };
+        try Delete.deleteRoot(io, stdin, stdout, rootPath);
 
         const srcFileKind = (cwd.statFile(
             io,
@@ -462,6 +431,46 @@ const Delete = struct {
                 else => unreachable,
             }
         }
+
+        deleteRoot(io, stdin, stdout, rootPath);
+    }
+
+    const DeleteRootError = error{
+        DeleteFail,
+        RootNotFound,
+        ConfirmationFail,
+    };
+    /// Uses `stdin` and `stdout` for deletion confirmation.
+    fn deleteRoot(io: Io, stdin: *StdIn, stdout: *StdOut, rootPath: []const u8) DeleteRootError!void {
+        const cwd = Dir.cwd();
+
+        cwd.deleteDir(io, rootPath) catch |err| switch (err) {
+            Dir.DeleteDirError.DirNotEmpty => {
+                while (true) {
+                    const isConfirmed = Utils.confirm(
+                        stdin,
+                        stdout,
+                        "Root is not empty. Delete recursively [y/n]?",
+                    ) catch |confirmErr| switch (confirmErr) {
+                        Utils.ConfirmError.UnknownChar => continue,
+                        else => DeleteRootError.ConfirmationFail,
+                    };
+
+                    if (isConfirmed) {
+                        return cwd.deleteTree(
+                            io,
+                            rootPath,
+                        ) catch DeleteRootError.DeleteFail;
+                    } else {
+                        return;
+                    }
+                }
+            },
+
+            Dir.DeleteDirError.FileNotFound => return DeleteRootError.RootNotFound,
+
+            else => return DeleteRootError.DeleteFail,
+        };
     }
 };
 pub const delete = Delete.delete;
@@ -481,6 +490,25 @@ inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
             .macos => "/Library/Application Support/ssync",
             .windows => "\\ssync",
 
+            else => unreachable,
+        },
+    );
+}
+
+/// Starting from `userPathLEn`, copies platfrom specific relative path
+/// of the config to `pathBuffer`, which already contains user path.
+///
+/// `userPathLen` must not include trailing slash.
+///
+/// Returns a slice of the full path.
+inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
+    return Utils.insertStr(
+        pathBuffer,
+        userPathLen,
+        switch (OS) {
+            .linux => "/.config/ssync.toml",
+            .macos => "/Library/Application Support/ssync/ssync.toml",
+            .windows => "\\ssync\\ssync.toml",
             else => unreachable,
         },
     );
@@ -514,24 +542,5 @@ inline fn getRootPath(
         pathBuffer,
         rootsDirPathLen + slashLen,
         rootName,
-    );
-}
-
-/// Starting from `userPathLEn`, copies platfrom specific relative path
-/// of the config to `pathBuffer`, which already contains user path.
-///
-/// `userPathLen` must not include trailing slash.
-///
-/// Returns a slice of the full path.
-inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-    return Utils.insertStr(
-        pathBuffer,
-        userPathLen,
-        switch (OS) {
-            .linux => "/.config/ssync.toml",
-            .macos => "/Library/Application Support/ssync/ssync.toml",
-            .windows => "\\ssync\\ssync.toml",
-            else => unreachable,
-        },
     );
 }
