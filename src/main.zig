@@ -44,16 +44,10 @@ pub fn main(init: process.Init.Minimal) !void {
             utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "list")) {
-            try Commands.list(arenaAllocator, io, env, &stdout);
-            utils.exit(.Success);
-        }
-
         if (eqlCmd(cmd, "add")) {
             var stdin: StdIn = block: {
                 // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
                 var buffer: [1]u8 = undefined;
-
                 break :block .init(io, &buffer);
             };
 
@@ -85,6 +79,33 @@ pub fn main(init: process.Init.Minimal) !void {
             utils.exit(.Success);
         }
 
+        if (eqlCmd(cmd, "delete")) {
+            const rootName = args.next() orelse {
+                try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
+                utils.exit(.InvalidArg);
+            };
+            const rootFilePath = args.next() orelse {
+                try stderr.write(ErrorMsgs.argExpected("file") ++ "\n");
+                utils.exit(.InvalidArg);
+            };
+
+            var stdin: StdIn = block: {
+                // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
+                var buffer: [1]u8 = undefined;
+                break :block .init(io, &buffer);
+            };
+
+            try Commands.delete(
+                io,
+                env,
+                &stdin,
+                &stdout,
+                rootName,
+                rootFilePath,
+            );
+            utils.exit(.Success);
+        }
+
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
@@ -92,6 +113,11 @@ pub fn main(init: process.Init.Minimal) !void {
             };
 
             try Commands.create(io, env, &stdout, rootName);
+            utils.exit(.Success);
+        }
+
+        if (eqlCmd(cmd, "list")) {
+            try Commands.list(arenaAllocator, io, env, &stdout);
             utils.exit(.Success);
         }
 
@@ -460,7 +486,7 @@ const Commands = struct {
         stdout: *StdOut,
         rootName: []const u8,
         rootFilePath: ?[]const u8,
-    ) void {
+    ) !void {
         const userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try utils.getUserPath(env, &userPathBuffer);
 
