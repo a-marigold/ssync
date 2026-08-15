@@ -79,12 +79,12 @@ pub inline fn joinPath(
             return pathBuffer[0..firstPathLen];
         }
 
-        return insertStr(u8, pathBuffer, firstPathLen, relativePath[1..]);
+        return insertStr(pathBuffer, firstPathLen, relativePath[1..]);
     }
 
     pathBuffer[firstPathLen] = slash;
 
-    return insertStr(u8, pathBuffer, firstPathLen + slashLen, relativePath);
+    return insertStr(pathBuffer, firstPathLen + slashLen, relativePath);
 }
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
@@ -111,23 +111,37 @@ pub inline fn insertStr(
 /// Concats every string of `strings` into `buffer`.
 ///
 /// `buffer` must have enough length.
+///
+/// Returns a slice in `buffer` containing concatinated strings.
 pub inline fn concatStr(buffer: []u8, strings: anytype) []const u8 {
+    var resultLen: usize = 0;
+
     inline for (0..strings.len) |index| {
         const string = strings[index];
 
         comptime {
-            const stringInfo = @typeInfo(string);
+            const isString = switch (@typeInfo(@TypeOf(string))) {
+                .array => |info| info.child == u8,
 
-            if ((stringInfo == .array and stringInfo.array.child != u8) or
-                (stringInfo == .pointer and stringInfo.pointer.child != u8) or
-                true)
-            {
-                @compileError("Expected string");
+                .pointer => |info| switch (@typeInfo(info.child)) {
+                    .array => |childInfo| childInfo.child == u8,
+                    .int => |childInfo| childInfo.bits == 8 and childInfo.signedness == .unsigned,
+                    else => false,
+                },
+                else => false,
+            };
+
+            if (!isString) {
+                @compileError(std.fmt.comptimePrint("Expected string at index {d}", .{index}));
             }
         }
 
         @memcpy(buffer[0..string.len], string);
+
+        resultLen += string.len;
     }
+
+    return buffer[0..resultLen];
 }
 
 /// High-level wrapper over buffered, streaming `stdin`.
