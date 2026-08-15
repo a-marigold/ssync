@@ -3,15 +3,17 @@
 const std = @import("std");
 const mem = std.mem;
 const heap = std.heap;
+const ArrayList = std.ArrayList;
 const Io = std.Io;
 const Dir = Io.Dir;
 const File = Io.File;
 const path = Dir.path;
 const process = std.process;
 const Environ = process.Environ;
-const unicode = std.unicode;
 const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
+
+const SsyncConfig = @import("SsyncConfig.zig");
 
 const __debug__ = Utils.__debug__;
 
@@ -66,7 +68,7 @@ const List = struct {
     /// Writes output to `stdout`.
     fn list(allocator: mem.Allocator, io: Io, env: Environ, stdout: *StdOut) !void {
         // Capacity 170 is enough for most cases
-        var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
+        var output: ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try Utils.getUserPath(env, &userPathBuffer);
@@ -111,8 +113,8 @@ const List = struct {
 
         try output.appendSlice(allocator, "Roots are located in: ");
         try output.appendSlice(allocator, rootsDirPath);
-
         try output.appendSlice(allocator, "\n\nCreated roots:\n");
+
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
             // are located in one dir, so check is it a dir (that is root)

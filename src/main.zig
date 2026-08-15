@@ -130,10 +130,3 @@ pub fn main(init: process.Init.Minimal) !void {
 inline fn eqlCmd(a: []const u8, b: []const u8) bool {
     return mem.eql(u8, a, b);
 }
-
-const SsyncConfig = struct {
-    // TODO: add text
-    pub const CONFIG_FILE_TEXT =
-        \\
-    ;
-};
