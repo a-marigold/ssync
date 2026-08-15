@@ -242,7 +242,10 @@ const Add = struct {
     const Error = error{
         DestPathAbsolute,
         GetSrcFullPathFail,
+        StatSrcFail,
+        SymLinkFail,
     };
+
     /// `stdin` is only used for confirmation for deletion.
     ///
     /// Writes output to `stdout` on its own.
@@ -309,7 +312,21 @@ const Add = struct {
                 srcFullPath,
             );
         }
+
+        const srcKind = (cwd.statFile(
+            io,
+            srcFullPath,
+            .{ .follow_symlinks = true },
+        ) catch return Error.StatSrcFail).kind;
+
+        cwd.symLink(
+            io,
+            srcFullPath,
+            destFullPath,
+            .{ .is_directory = srcKind == .directory },
+        ) catch return Error.SymLinkFail;
     }
+
     const ReplaceRootError = error{
         StatSrcFail,
         SrcNotDir,
@@ -441,7 +458,12 @@ const Delete = struct {
         ConfirmationFail,
     };
     /// Uses `stdin` and `stdout` for deletion confirmation.
-    fn deleteRoot(io: Io, stdin: *StdIn, stdout: *StdOut, rootPath: []const u8) DeleteRootError!void {
+    fn deleteRoot(
+        io: Io,
+        stdin: *StdIn,
+        stdout: *StdOut,
+        rootPath: []const u8,
+    ) DeleteRootError!void {
         const cwd = Dir.cwd();
 
         cwd.deleteDir(io, rootPath) catch |err| switch (err) {
