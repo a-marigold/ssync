@@ -9,15 +9,16 @@ const process = std.process;
 const Environ = process.Environ;
 const unicode = std.unicode;
 const builtin = @import("builtin");
-const utils = @import("utils.zig");
+const Utils = @import("Utils.zig");
 
 const OS = builtin.os.tag;
 
 const MAX_PATH_BYTES = Io.Dir.max_path_bytes;
-const StdOut = utils.StdOut;
-const StdIn = utils.StdIn;
 
-const __debug__ = utils.__debug__;
+const StdOut = Utils.StdOut;
+const StdIn = Utils.StdIn;
+
+const __debug__ = Utils.__debug__;
 
 pub fn main(init: process.Init.Minimal) !void {
     const env = init.environ;
@@ -41,7 +42,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "--help")) {
             try Commands.help(&stdout);
-            utils.exit(.Success);
+            Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "add")) {
@@ -53,17 +54,17 @@ pub fn main(init: process.Init.Minimal) !void {
 
             const rootName = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
-                utils.exit(.InvalidArg);
+                Utils.exit(.InvalidArg);
             };
 
             const srcPath = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("src") ++ "\n");
-                utils.exit(.InvalidArg);
+                Utils.exit(.InvalidArg);
             };
 
             const destPath = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("dest") ++ "\n");
-                utils.exit(.InvalidArg);
+                Utils.exit(.InvalidArg);
             };
 
             try Commands.add(
@@ -76,17 +77,17 @@ pub fn main(init: process.Init.Minimal) !void {
                 destPath,
             );
 
-            utils.exit(.Success);
+            Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "delete")) {
             const rootName = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
-                utils.exit(.InvalidArg);
+                Utils.exit(.InvalidArg);
             };
             const rootFilePath = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("file") ++ "\n");
-                utils.exit(.InvalidArg);
+                Utils.exit(.InvalidArg);
             };
 
             var stdin: StdIn = block: {
@@ -103,33 +104,33 @@ pub fn main(init: process.Init.Minimal) !void {
                 rootName,
                 rootFilePath,
             );
-            utils.exit(.Success);
+            Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
                 try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
-                utils.exit(.InvalidArg);
+                Utils.exit(.InvalidArg);
             };
 
             try Commands.create(io, env, &stdout, rootName);
-            utils.exit(.Success);
+            Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "list")) {
             try Commands.list(arenaAllocator, io, env, &stdout);
-            utils.exit(.Success);
+            Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "config")) {
             try Commands.config(io, env, &stdout, &stderr);
-            utils.exit(.Success);
+            Utils.exit(.Success);
         }
     }
 
     try Commands.help(&stderr);
 
-    utils.exit(.InvalidArg);
+    Utils.exit(.InvalidArg);
 }
 
 const ErrorMsgs = Commands.ErrorMsgs;
@@ -184,7 +185,7 @@ const Commands = struct {
         var output: std.ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try utils.getUserPath(env, &userPathBuffer);
+        const userPath = try Utils.getUserPath(env, &userPathBuffer);
 
         const rootsDirPath = getRootsDirPath(
             &userPathBuffer,
@@ -253,7 +254,7 @@ const Commands = struct {
         var output: [MAX_PATH_BYTES + outputEndCharLen]u8 = undefined;
 
         const configPath = block: {
-            const userPath = try utils.getUserPath(env, &output);
+            const userPath = try Utils.getUserPath(env, &output);
 
             break :block getConfigPath(&output, userPath.len);
         };
@@ -296,7 +297,7 @@ const Commands = struct {
         rootName: []const u8,
     ) !void {
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try utils.getUserPath(env, &userPathBuffer);
+        const userPath = try Utils.getUserPath(env, &userPathBuffer);
 
         const rootsDirPath = getRootsDirPath(
             &userPathBuffer,
@@ -313,7 +314,7 @@ const Commands = struct {
 
         const cwd = Dir.cwd();
 
-        utils.createDir(
+        Utils.createDir(
             io,
             cwd,
             rootPath,
@@ -322,13 +323,13 @@ const Commands = struct {
                 Dir.CreateDirError.FileNotFound => {
                     // Roots dir has not been created yet
 
-                    utils.createDir(
+                    Utils.createDir(
                         io,
                         cwd,
                         rootPath,
                     ) catch return CreateError.CreateRootsDirFail;
 
-                    utils.createDir(
+                    Utils.createDir(
                         io,
                         cwd,
                         rootPath,
@@ -357,9 +358,9 @@ const Commands = struct {
         rootName: []const u8,
         srcPath: []const u8,
         destPath: []const u8,
-    ) (AddError || utils.UserPathError || RootPathError || ReplaceRootError)!void {
+    ) (AddError || Utils.UserPathError || RootPathError || ReplaceRootError)!void {
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try utils.getUserPath(env, &userPathBuffer);
+        const userPath = try Utils.getUserPath(env, &userPathBuffer);
 
         const rootsDirPath = getRootsDirPath(&userPathBuffer, userPath.len);
 
@@ -395,7 +396,7 @@ const Commands = struct {
                 return AddError.DestPathAbsolute;
             }
 
-            break :block utils.joinPath(
+            break :block Utils.joinPath(
                 &userPathBuffer,
                 rootPath.len,
                 destPath,
@@ -434,13 +435,13 @@ const Commands = struct {
             switch (err) {
                 Dir.DeleteDirError.DirNotEmpty => {
                     while (true) {
-                        const isConfirmed = utils.confirm(
+                        const isConfirmed = Utils.confirm(
                             stdin,
                             stdout,
                             "Root is not empty. Rewrite all files [y/n]? ",
                         ) catch |confirmErr| {
                             switch (confirmErr) {
-                                utils.ConfirmError.UnknownChar => continue,
+                                Utils.ConfirmError.UnknownChar => continue,
                                 else => return ReplaceRootError.ConfirmationFail,
                             }
                         };
@@ -488,7 +489,7 @@ const Commands = struct {
         rootFilePath: ?[]const u8,
     ) !void {
         const userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try utils.getUserPath(env, &userPathBuffer);
+        const userPath = try Utils.getUserPath(env, &userPathBuffer);
 
         const rootPath = block: {
             const rootsDirPath = getRootsDirPath(
@@ -510,7 +511,7 @@ const Commands = struct {
                 return;
             }
 
-            const fullFilePath = utils.joinPath(
+            const fullFilePath = Utils.joinPath(
                 &userPathBuffer,
                 rootPath.len,
                 rootFilePath,
@@ -530,19 +531,19 @@ const Commands = struct {
                     const query = block: {
                         var buffer: []u8 = undefined;
 
-                        break :block utils.concatStr(&buffer, .{
+                        break :block Utils.concatStr(&buffer, .{
                             "'", fullFilePath, "' is a dir. Delete all files [y/n]?",
                         });
                     };
 
                     while (true) {
-                        const isConfirmed = utils.confirm(
+                        const isConfirmed = Utils.confirm(
                             stdin,
                             stdout,
                             query,
                         ) catch |err| {
                             switch (err) {
-                                utils.ConfirmError.UnknownChar => continue,
+                                Utils.ConfirmError.UnknownChar => continue,
                                 else => {},
                             }
                         };
@@ -566,7 +567,7 @@ const Commands = struct {
     ///
     /// Returns a slice of the full roots dir path.
     inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-        return utils.insertStr(
+        return Utils.insertStr(
             u8,
             pathBuffer,
             userPathLen,
@@ -604,7 +605,7 @@ const Commands = struct {
         const slashLen = 1;
 
         pathBuffer[rootsDirPathLen] = slash;
-        return utils.insertStr(
+        return Utils.insertStr(
             u8,
             pathBuffer,
             rootsDirPathLen + slashLen,
@@ -619,7 +620,7 @@ const Commands = struct {
     ///
     /// Returns a slice of the full path.
     inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-        return utils.insertStr(
+        return Utils.insertStr(
             u8,
             pathBuffer,
             userPathLen,
