@@ -331,7 +331,10 @@ const Add = struct {
         StatSrcFail,
         SrcNotDir,
         SymLinkRootFail,
-    } || Delete.DeleteRootError;
+    } || Delete.DeleteDirWithConfirmError;
+    /// Deletes a root at `rootPath` and places a symlink of `srcFullPath` there.
+    ///
+    /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.
     inline fn replaceRoot(
         io: Io,
         stdin: *StdIn,
@@ -341,7 +344,13 @@ const Add = struct {
     ) ReplaceRootError!void {
         const cwd = Dir.cwd();
 
-        try Delete.deleteRoot(io, stdin, stdout, rootPath);
+        try Delete.deleteDirWithConfirm(
+            io,
+            stdin,
+            stdout,
+            rootPath,
+            "Root is not empty. Delete it [y/n]? ",
+        );
 
         const srcFileKind = (cwd.statFile(
             io,
@@ -400,7 +409,6 @@ const Delete = struct {
             const fullFilePath = Utils.joinPath(
                 &userPathBuffer,
                 rootPath.len,
-
                 filePath,
             );
 
@@ -415,7 +423,7 @@ const Delete = struct {
                     try cwd.deleteFile(io, fullFilePath);
                 },
                 .directory => {
-                    const query = block: {
+                    const confirmQuery = block: {
                         const start = "'";
                         const end = "' is a dir. Delete all files [y/n]?";
 
@@ -426,72 +434,65 @@ const Delete = struct {
                         );
                     };
 
-                    while (true) {
-                        const isConfirmed = Utils.confirm(
-                            stdin,
-                            stdout,
-                            query,
-                        ) catch |err| {
-                            switch (err) {
-                                Utils.ConfirmError.UnknownChar => continue,
-                                else => {},
-                            }
-                        };
-
-                        if (isConfirmed) {
-                            return cwd.deleteTree(io, fullFilePath) catch {};
-                        } else {
-                            return;
-                        }
-                    }
+                    try deleteDirWithConfirm(
+                        io,
+                        stdin,
+                        stdout,
+                        fullFilePath,
+                        confirmQuery,
+                    );
                 },
                 else => unreachable,
             }
         }
 
-        deleteRoot(io, stdin, stdout, rootPath);
+        try deleteDirWithConfirm(io, stdin, stdout, rootPath);
     }
 
-    const DeleteRootError = error{
+    const DeleteDirWithConfirmError = error{
+        DirNotFound,
         DeleteFail,
-        RootNotFound,
         ConfirmationFail,
     };
-    /// Uses `stdin` and `stdout` for deletion confirmation.
-    fn deleteRoot(
+    /// Deletes dir at `dirPath` if it is empty and confirms to delete if it is not empty.
+    ///
+    /// Uses `stdin` and `stdout` for confirmation.
+    fn deleteDirWithConfirm(
         io: Io,
         stdin: *StdIn,
         stdout: *StdOut,
-        rootPath: []const u8,
-    ) DeleteRootError!void {
+        dirPath: []const u8,
+        /// Query to write to `stdout` for confirmation.
+        confirmQuery: []const u8,
+    ) DeleteDirWithConfirmError!void {
         const cwd = Dir.cwd();
 
-        cwd.deleteDir(io, rootPath) catch |err| switch (err) {
+        cwd.deleteDir(io, dirPath) catch |err| switch (err) {
             Dir.DeleteDirError.DirNotEmpty => {
                 while (true) {
                     const isConfirmed = Utils.confirm(
                         stdin,
                         stdout,
-                        "Root is not empty. Delete recursively [y/n]?",
+                        confirmQuery,
                     ) catch |confirmErr| switch (confirmErr) {
                         Utils.ConfirmError.UnknownChar => continue,
-                        else => DeleteRootError.ConfirmationFail,
+                        else => DeleteDirWithConfirmError.ConfirmationFail,
                     };
 
                     if (isConfirmed) {
                         return cwd.deleteTree(
                             io,
-                            rootPath,
-                        ) catch DeleteRootError.DeleteFail;
+                            dirPath,
+                        ) catch DeleteDirWithConfirmError.DeleteFail;
                     } else {
                         return;
                     }
                 }
             },
 
-            Dir.DeleteDirError.FileNotFound => return DeleteRootError.RootNotFound,
+            Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
 
-            else => return DeleteRootError.DeleteFail,
+            else => return DeleteDirWithConfirmError.DeleteFail,
         };
     }
 };
@@ -566,3 +567,4 @@ inline fn getRootPath(
         rootName,
     );
 }
+// TODO: review writes to stdio that don't use vectorized output
