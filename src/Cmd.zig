@@ -24,10 +24,16 @@ const MAX_PATH_BYTES = Dir.max_path_bytes;
 const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 
-pub const MAX_ROOT_NAME_BYTES = 60;
+pub const MAX_ROOT_NAME_BYTES = 100;
 
-pub const ErrorMsgs = struct {
-    pub inline fn argExpected(comptime argName: []const u8) []const u8 {
+/// The desired amount of bytes of `StdOut` buffer that fits every command.
+pub const STDOUT_BUFFER_BYTES = 170;
+
+/// Messages of all CLI logical errors.
+///
+/// Messages don't end with line break.
+pub const Errors = struct {
+    pub inline fn ARG_EXPECTED(comptime argName: []const u8) []const u8 {
         return "'" ++ argName ++ "' arg expected";
     }
 };
@@ -333,7 +339,7 @@ const Add = struct {
         StatSrcFail,
         SrcNotDir,
         SymLinkRootFail,
-    } || Delete.DeleteDirWithConfirmError;
+    } || DeleteDirWithConfirmError;
     /// Deletes a root at `rootPath` and places a symlink of `srcFullPath` there.
     ///
     /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.

@@ -163,26 +163,32 @@ pub const StdIn = struct {
     }
 };
 
-/// High-level wrapper over unbufferred, streaming `stdout` or `stderr`.
+/// High-level wrapper over streaming `stdout` or `stderr`.
 pub const StdOut = struct {
     writer: Io.File.Writer,
 
-    pub inline fn init(io: Io, comptime stdoutType: enum { Stdout, Stderr }) @This() {
+    pub inline fn init(io: Io, comptime stdoutType: enum { Stdout, Stderr }, buffer: []u8) @This() {
         return .{
             .writer = switch (stdoutType) {
                 .Stdout => Io.File.stdout(),
                 .Stderr => Io.File.stderr(),
-            }.writerStreaming(io, &.{}), // Empty slice means unbuffered
-
+            }.writerStreaming(io, buffer),
         };
     }
 
     pub const WriteError = Io.Writer.Error;
+
     /// Outputs `data` to stdio.
     pub inline fn write(self: *@This(), data: []const []const u8) WriteError!void {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
         _ = try writer.vtable.drain(writer, data, 1);
+    }
+
+    pub inline fn flush(self: *@This()) WriteError!void {
+        const writer: *Io.Writer = @constCast(&self.writer.inteface);
+
+        return writer.flush();
     }
 };
 

@@ -8,7 +8,7 @@ const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
 const Cmd = @import("Cmd.zig");
 
-const ErrorMsgs = Cmd.ErrorMsgs;
+const Errors = Cmd.Errors;
 
 const __debug__ = Utils.__debug__;
 
@@ -25,17 +25,21 @@ pub fn main(init: process.Init.Minimal) !void {
     var threaded: Io.Threaded = .init(arenaAllocator, .{});
     const io = threaded.io();
 
-    var stderr: StdOut = .init(io, .Stderr);
+    var stderr: StdOut = .init(io, .Stderr, &.{});
 
     var args = try init.args.iterateAllocator(arenaAllocator);
 
     _ = args.skip();
 
     if (args.next()) |cmd| {
-        var stdout: StdOut = .init(io, .Stdout);
+        var stdout: StdOut = block: {
+            var buffer: [0]u8 = undefined;
+            break :block .init(io, .Stdout, &buffer);
+        };
 
         if (eqlCmd(cmd, "--help")) {
             try Cmd.help(&stdout);
+
             Utils.exit(.Success);
         }
 
@@ -47,15 +51,15 @@ pub fn main(init: process.Init.Minimal) !void {
             };
 
             const rootName = args.next() orelse {
-                try stderr.write(&.{ErrorMsgs.argExpected("root") ++ "\n"});
+                try stderr.write(&.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const srcPath = args.next() orelse {
-                try stderr.write(&.{ErrorMsgs.argExpected("src") ++ "\n"});
+                try stderr.write(&.{Errors.ARG_EXPECTED("src") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const destPath = args.next() orelse {
-                try stderr.write(&.{ErrorMsgs.argExpected("dest") ++ "\n"});
+                try stderr.write(&.{Errors.ARG_EXPECTED("dest") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
@@ -74,11 +78,11 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "delete")) {
             const rootName = args.next() orelse {
-                try stderr.write(&.{ErrorMsgs.argExpected("root") ++ "\n"});
+                try stderr.write(&.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const rootFilePath = args.next() orelse {
-                try stderr.write(&.{ErrorMsgs.argExpected("file") ++ "\n"});
+                try stderr.write(&.{Errors.ARG_EXPECTED("file") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
@@ -103,11 +107,12 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
-                try stderr.write(&.{ErrorMsgs.argExpected("root") ++ "\n"});
+                try stderr.write(&.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
             try Cmd.create(io, env, &stdout, rootName);
+
             Utils.exit(.Success);
         }
 
