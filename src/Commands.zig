@@ -59,7 +59,7 @@ const Help = struct {
             \\
         ;
 
-        try stdout.write(text);
+        try stdout.write(&.{text});
     }
 };
 pub const help = Help.help;
@@ -91,7 +91,7 @@ const List = struct {
                 if (err == Dir.OpenError.FileNotFound) {
                     try output.appendSlice(allocator, noRootCreatedMsg);
 
-                    return stdout.write(output.items);
+                    return stdout.write(&.{output.items});
                 }
 
                 return err;
@@ -108,7 +108,7 @@ const List = struct {
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
             try output.appendSlice(allocator, noRootCreatedMsg);
 
-            return stdout.write(output.items);
+            return stdout.write(&.{output.items});
         };
 
         try output.appendSlice(allocator, "Roots are located in: ");
@@ -129,7 +129,7 @@ const List = struct {
             try output.append(allocator, '\n');
         }
 
-        try stdout.write(output.items);
+        try stdout.write(&.{output.items});
     }
 };
 pub const list = List.list;
@@ -149,17 +149,19 @@ const Config = struct {
         };
 
         createConfig(io, configPath) catch {
-            try stderr.write("Failed to create config\n");
+            try stderr.write(&.{"Failed to create config\n"});
         };
 
         output[configPath.len] = outputEndChar;
 
-        try stdout.write(output[0 .. configPath.len + outputEndCharLen]);
+        try stdout.write(&.{output[0 .. configPath.len + outputEndCharLen]});
     }
+
     inline fn createConfig(io: Io, configPath: []const u8) !void {
         const cwd = Dir.cwd();
 
         // Happy path is when config exists, Sad path is when does not
+
         _ = cwd.statFile(
             io,
             configPath,
@@ -232,7 +234,7 @@ const Create = struct {
             }
         };
 
-        try stdout.write("Root was successfully created\n");
+        try stdout.write(&.{"Root was successfully created\n"});
     }
 };
 pub const create = Create.create;
@@ -349,7 +351,7 @@ const Add = struct {
             stdin,
             stdout,
             rootPath,
-            "Root is not empty. Delete it [y/n]? ",
+            &.{"Root is not empty. Delete it [y/n]? "},
         );
 
         const srcFileKind = (cwd.statFile(
@@ -411,7 +413,6 @@ const Delete = struct {
                 rootPath.len,
                 filePath,
             );
-
             const fileKind = (try cwd.statFile(
                 io,
                 fullFilePath,
@@ -419,34 +420,27 @@ const Delete = struct {
             )).kind;
 
             switch (fileKind) {
-                .file => {
-                    try cwd.deleteFile(io, fullFilePath);
-                },
+                .file => try cwd.deleteFile(io, fullFilePath),
                 .directory => {
-                    const confirmQuery = block: {
-                        const start = "'";
-                        const end = "' is a dir. Delete all files [y/n]?";
-
-                        var buffer: [start.len + MAX_PATH_BYTES + end.len]u8 = undefined;
-                        break :block Utils.concatStr(
-                            &buffer,
-                            .{ start, fullFilePath, end },
-                        );
-                    };
-
                     try deleteDirWithConfirm(
                         io,
                         stdin,
                         stdout,
                         fullFilePath,
-                        confirmQuery,
+                        &.{ "'", fullFilePath, "' is a non-empty dir. Delete it [y/n]? " },
                     );
                 },
                 else => unreachable,
             }
         }
 
-        try deleteDirWithConfirm(io, stdin, stdout, rootPath);
+        try deleteDirWithConfirm(
+            io,
+            stdin,
+            stdout,
+            rootPath,
+            &.{"Root is not empty. Delete it [y/n]? "},
+        );
     }
 
     const DeleteDirWithConfirmError = error{
@@ -454,7 +448,9 @@ const Delete = struct {
         DeleteFail,
         ConfirmationFail,
     };
-    /// Deletes dir at `dirPath` if it is empty and confirms to delete if it is not empty.
+    /// If the dir at `dirPath` is empty, just deletes it.
+    ///
+    /// If the dir is not empty, confirms to delete it recursively.
     ///
     /// Uses `stdin` and `stdout` for confirmation.
     fn deleteDirWithConfirm(
@@ -462,8 +458,8 @@ const Delete = struct {
         stdin: *StdIn,
         stdout: *StdOut,
         dirPath: []const u8,
-        /// Query to write to `stdout` for confirmation.
-        confirmQuery: []const u8,
+        /// To be used with `Utils.confirm`.
+        confirmQuery: []const []const u8,
     ) DeleteDirWithConfirmError!void {
         const cwd = Dir.cwd();
 
@@ -476,7 +472,7 @@ const Delete = struct {
                         confirmQuery,
                     ) catch |confirmErr| switch (confirmErr) {
                         Utils.ConfirmError.UnknownChar => continue,
-                        else => DeleteDirWithConfirmError.ConfirmationFail,
+                        else => return DeleteDirWithConfirmError.ConfirmationFail,
                     };
 
                     if (isConfirmed) {
@@ -489,9 +485,7 @@ const Delete = struct {
                     }
                 }
             },
-
             Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
-
             else => return DeleteDirWithConfirmError.DeleteFail,
         };
     }
@@ -512,7 +506,6 @@ inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
             .linux => "/.local/share/ssync",
             .macos => "/Library/Application Support/ssync",
             .windows => "\\ssync",
-
             else => unreachable,
         },
     );
@@ -523,7 +516,7 @@ inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
 ///
 /// `userPathLen` must not include trailing slash.
 ///
-/// Returns a slice of the full path.
+/// Returns a slice of the full config path.
 inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
     return Utils.insertStr(
         pathBuffer,
@@ -567,4 +560,3 @@ inline fn getRootPath(
         rootName,
     );
 }
-// TODO: review writes to stdio that don't use vectorized output

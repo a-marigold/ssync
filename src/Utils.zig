@@ -4,6 +4,7 @@ const Io = std.Io;
 const Dir = Io.Dir;
 const process = std.process;
 const unicode = std.unicode;
+const debug = std.debug;
 const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
@@ -128,6 +129,7 @@ pub inline fn concatStr(buffer: []u8, strings: anytype) []const u8 {
                     .int => |childInfo| childInfo.bits == 8 and childInfo.signedness == .unsigned,
                     else => false,
                 },
+
                 else => false,
             };
 
@@ -174,19 +176,26 @@ pub const StdOut = struct {
 
         };
     }
+
     pub const WriteError = Io.Writer.Error;
     /// Outputs `data` to stdio.
-    pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
+    pub inline fn write(self: *@This(), data: []const []const u8) WriteError!void {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
-        _ = try writer.vtable.drain(writer, &.{data}, 1);
+        _ = try writer.vtable.drain(writer, data, 1);
     }
 };
 
 pub const ConfirmError = error{UnknownChar} || StdIn.ReadError || StdOut.WriteError;
-
+/// Writes `query` to `stdout`.
+///
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
-pub inline fn confirm(stdin: *StdIn, stdout: *StdOut, query: []const u8) ConfirmError!bool {
+pub inline fn confirm(
+    stdin: *StdIn,
+    stdout: *StdOut,
+    /// It is a slice of slices 'cause `StdOut.write` recevies data like that.
+    query: []const []const u8,
+) ConfirmError!bool {
     try stdout.write(query);
 
     const input = try stdin.readByte();
@@ -207,5 +216,5 @@ pub fn __debug__(comptime fmt: []const u8, args: anytype) void {
         @compileError("'__debug__' is only for 'Debug' mode");
     }
 
-    std.debug.print(fmt ++ "\n", args);
+    debug.print(fmt ++ "\n", args);
 }

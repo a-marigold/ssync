@@ -47,15 +47,15 @@ pub fn main(init: process.Init.Minimal) !void {
             };
 
             const rootName = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
+                try stderr.write(&.{ErrorMsgs.argExpected("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const srcPath = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("src") ++ "\n");
+                try stderr.write(&.{ErrorMsgs.argExpected("src") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const destPath = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("dest") ++ "\n");
+                try stderr.write(&.{ErrorMsgs.argExpected("dest") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
@@ -74,11 +74,11 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "delete")) {
             const rootName = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
+                try stderr.write(&.{ErrorMsgs.argExpected("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const rootFilePath = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("file") ++ "\n");
+                try stderr.write(&.{ErrorMsgs.argExpected("file") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
@@ -103,7 +103,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
-                try stderr.write(ErrorMsgs.argExpected("root") ++ "\n");
+                try stderr.write(&.{ErrorMsgs.argExpected("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
