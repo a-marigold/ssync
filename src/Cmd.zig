@@ -346,7 +346,7 @@ const Add = struct {
     ) ReplaceRootError!void {
         const cwd = Dir.cwd();
 
-        try Delete.deleteDirWithConfirm(
+        try deleteDirWithConfirm(
             io,
             stdin,
             stdout,
@@ -421,6 +421,7 @@ const Delete = struct {
 
             switch (fileKind) {
                 .file => try cwd.deleteFile(io, fullFilePath),
+
                 .directory => {
                     try deleteDirWithConfirm(
                         io,
@@ -430,6 +431,7 @@ const Delete = struct {
                         &.{ "'", fullFilePath, "' is a non-empty dir. Delete it [y/n]? " },
                     );
                 },
+
                 else => unreachable,
             }
         }
@@ -442,55 +444,59 @@ const Delete = struct {
             &.{"Root is not empty. Delete it [y/n]? "},
         );
     }
-
-    const DeleteDirWithConfirmError = error{
-        DirNotFound,
-        DeleteFail,
-        ConfirmationFail,
-    };
-    /// If the dir at `dirPath` is empty, just deletes it.
-    ///
-    /// If the dir is not empty, confirms to delete it recursively.
-    ///
-    /// Uses `stdin` and `stdout` for confirmation.
-    fn deleteDirWithConfirm(
-        io: Io,
-        stdin: *StdIn,
-        stdout: *StdOut,
-        dirPath: []const u8,
-        /// To be used with `Utils.confirm`.
-        confirmQuery: []const []const u8,
-    ) DeleteDirWithConfirmError!void {
-        const cwd = Dir.cwd();
-
-        cwd.deleteDir(io, dirPath) catch |err| switch (err) {
-            Dir.DeleteDirError.DirNotEmpty => {
-                while (true) {
-                    const isConfirmed = Utils.confirm(
-                        stdin,
-                        stdout,
-                        confirmQuery,
-                    ) catch |confirmErr| switch (confirmErr) {
-                        Utils.ConfirmError.UnknownChar => continue,
-                        else => return DeleteDirWithConfirmError.ConfirmationFail,
-                    };
-
-                    if (isConfirmed) {
-                        return cwd.deleteTree(
-                            io,
-                            dirPath,
-                        ) catch DeleteDirWithConfirmError.DeleteFail;
-                    } else {
-                        return;
-                    }
-                }
-            },
-            Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
-            else => return DeleteDirWithConfirmError.DeleteFail,
-        };
-    }
 };
 pub const delete = Delete.delete;
+
+//
+// --- Cmd Utils ---
+//
+
+const DeleteDirWithConfirmError = error{
+    DirNotFound,
+    DeleteFail,
+    ConfirmationFail,
+};
+/// If the dir at `dirPath` is empty, just deletes it.
+///
+/// If the dir is not empty, confirms to delete it recursively.
+///
+/// Uses `stdin` and `stdout` for confirmation.
+fn deleteDirWithConfirm(
+    io: Io,
+    stdin: *StdIn,
+    stdout: *StdOut,
+    dirPath: []const u8,
+    /// To be used with `Utils.confirm`.
+    confirmQuery: []const []const u8,
+) DeleteDirWithConfirmError!void {
+    const cwd = Dir.cwd();
+
+    cwd.deleteDir(io, dirPath) catch |err| switch (err) {
+        Dir.DeleteDirError.DirNotEmpty => {
+            while (true) {
+                const isConfirmed = Utils.confirm(
+                    stdin,
+                    stdout,
+                    confirmQuery,
+                ) catch |confirmErr| switch (confirmErr) {
+                    Utils.ConfirmError.UnknownChar => continue,
+                    else => return DeleteDirWithConfirmError.ConfirmationFail,
+                };
+
+                if (isConfirmed) {
+                    return cwd.deleteTree(
+                        io,
+                        dirPath,
+                    ) catch DeleteDirWithConfirmError.DeleteFail;
+                } else {
+                    return;
+                }
+            }
+        },
+        Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
+        else => return DeleteDirWithConfirmError.DeleteFail,
+    };
+}
 
 /// Starting from `userPathLen`, copies platform-specific relative path
 /// of the roots dir to `pathBuffer`, which already contains user path
@@ -512,7 +518,7 @@ inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
 }
 
 /// Starting from `userPathLEn`, copies platfrom specific relative path
-/// of the config to `pathBuffer`, which already contains user path.
+/// of the config to `pathBuffer`, which already contains the user path.
 ///
 /// `userPathLen` must not include trailing slash.
 ///

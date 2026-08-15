@@ -6,9 +6,9 @@ const process = std.process;
 const Environ = process.Environ;
 const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
-const Commands = @import("Commands.zig");
+const Cmd = @import("Cmd.zig");
 
-const ErrorMsgs = Commands.ErrorMsgs;
+const ErrorMsgs = Cmd.ErrorMsgs;
 
 const __debug__ = Utils.__debug__;
 
@@ -35,7 +35,7 @@ pub fn main(init: process.Init.Minimal) !void {
         var stdout: StdOut = .init(io, .Stdout);
 
         if (eqlCmd(cmd, "--help")) {
-            try Commands.help(&stdout);
+            try Cmd.help(&stdout);
             Utils.exit(.Success);
         }
 
@@ -59,7 +59,7 @@ pub fn main(init: process.Init.Minimal) !void {
                 Utils.exit(.InvalidArg);
             };
 
-            try Commands.add(
+            try Cmd.add(
                 io,
                 env,
                 &stdin,
@@ -89,7 +89,7 @@ pub fn main(init: process.Init.Minimal) !void {
                 break :block .init(io, &buffer);
             };
 
-            try Commands.delete(
+            try Cmd.delete(
                 io,
                 env,
                 &stdin,
@@ -107,22 +107,22 @@ pub fn main(init: process.Init.Minimal) !void {
                 Utils.exit(.InvalidArg);
             };
 
-            try Commands.create(io, env, &stdout, rootName);
+            try Cmd.create(io, env, &stdout, rootName);
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "list")) {
-            try Commands.list(arenaAllocator, io, env, &stdout);
+            try Cmd.list(arenaAllocator, io, env, &stdout);
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "config")) {
-            try Commands.config(io, env, &stdout, &stderr);
+            try Cmd.config(io, env, &stdout, &stderr);
             Utils.exit(.Success);
         }
     }
 
-    try Commands.help(&stderr);
+    try Cmd.help(&stderr);
     Utils.exit(.InvalidArg);
 }
 
