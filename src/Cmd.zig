@@ -80,6 +80,8 @@ pub const help = Help.help;
 
 const List = struct {
     /// Writes output to `stdout`.
+    ///
+    /// Errors returned by this function are only critical errors.
     fn list(io: Io, env: Environ, stdout: *StdOut) !void {
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try Utils.getUserPath(env, &userPathBuffer);
@@ -160,12 +162,10 @@ const Config = struct {
 
         try stdout.write(.{output[0 .. configPath.len + outputEndCharLen]});
     }
-
     inline fn createConfig(io: Io, configPath: []const u8) !void {
         const cwd = Dir.cwd();
 
         // Happy path is when config exists, Sad path is when does not
-
         _ = cwd.statFile(
             io,
             configPath,
@@ -249,22 +249,20 @@ const Add = struct {
     const Error = error{
         DestPathAbsolute,
         GetSrcFullPathFail,
-        StatSrcFail,
         SymLinkFail,
+        DestAlreadyExist,
+        CannotReplaceRoot,
     };
 
-    /// `stdin` is only used for confirmation of deletion.
-    ///
     /// Writes output to `stdout` on its own.
     fn add(
         io: Io,
         env: Environ,
-        stdin: *StdIn,
         stdout: *StdOut,
         rootName: []const u8,
         srcPath: []const u8,
         destPath: []const u8,
-    ) (Error || Utils.UserPathError || RootPathError || ReplaceRootError)!void {
+    ) (Error || Utils.UserPathError || RootPathError)!void {
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try Utils.getUserPath(env, &userPathBuffer);
 
@@ -309,15 +307,8 @@ const Add = struct {
             break :block buffer[0..fullPathLen];
         };
 
-        // Symlink the whole root
         if (destFullPath.len == rootPath.len) {
-            return replaceRoot(
-                io,
-                stdin,
-                stdout,
-                rootPath,
-                srcFullPath,
-            );
+            return Error.CannotReplaceRoot;
         }
 
         const srcKind = (cwd.statFile(
@@ -332,49 +323,6 @@ const Add = struct {
             destFullPath,
             .{ .is_directory = srcKind == .directory },
         ) catch return Error.SymLinkFail;
-    }
-
-    const ReplaceRootError = error{
-        StatSrcFail,
-        SrcNotDir,
-        SymLinkRootFail,
-    } || DeleteDirWithConfirmError;
-    /// Deletes a root at `rootPath` and places a symlink of `srcFullPath` there.
-    ///
-    /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.
-    inline fn replaceRoot(
-        io: Io,
-        stdin: *StdIn,
-        stdout: *StdOut,
-        rootPath: []const u8,
-        srcFullPath: []const u8,
-    ) ReplaceRootError!void {
-        const cwd = Dir.cwd();
-
-        try deleteDirWithConfirm(
-            io,
-            stdin,
-            stdout,
-            rootPath,
-            .{"Root is not empty. Delete it [y/n]? "},
-        );
-
-        const srcFileKind = (cwd.statFile(
-            io,
-            srcFullPath,
-            .{ .follow_symlinks = false },
-        ) catch return ReplaceRootError.StatSrcFail).kind;
-
-        if (srcFileKind != .directory) {
-            return ReplaceRootError.SrcNotDir;
-        }
-
-        cwd.symLink(
-            io,
-            srcFullPath,
-            rootPath,
-            .{ .is_directory = true },
-        ) catch return ReplaceRootError.SymLinkRootFail;
     }
 };
 pub const add = Add.add;
@@ -418,6 +366,7 @@ const Delete = struct {
                 rootPath.len,
                 filePath,
             );
+
             const fileKind = (try cwd.statFile(
                 io,
                 fullFilePath,
@@ -508,6 +457,49 @@ const Update = struct {
 
         try Utils.symLink(io, cwd, srcFullPath, srcFullPath);
     }
+
+    const ReplaceRootError = error{
+        StatSrcFail,
+        SrcNotDir,
+        SymLinkRootFail,
+    } || DeleteDirWithConfirmError;
+    /// Deletes a root at `rootPath` and places a symlink targeting `srcFullPath` there.
+    ///
+    /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.
+    inline fn replaceRoot(
+        io: Io,
+        stdin: *StdIn,
+        stdout: *StdOut,
+        rootPath: []const u8,
+        srcFullPath: []const u8,
+    ) ReplaceRootError!void {
+        const cwd = Dir.cwd();
+
+        try deleteDirWithConfirm(
+            io,
+            stdin,
+            stdout,
+            rootPath,
+            .{"Root is not empty. Delete it [y/n]? "},
+        );
+
+        const srcFileKind = (cwd.statFile(
+            io,
+            srcFullPath,
+            .{ .follow_symlinks = true },
+        ) catch return ReplaceRootError.StatSrcFail).kind;
+
+        if (srcFileKind != .directory) {
+            return ReplaceRootError.SrcNotDir;
+        }
+
+        cwd.symLink(
+            io,
+            srcFullPath,
+            rootPath,
+            .{ .is_directory = true },
+        ) catch return ReplaceRootError.SymLinkRootFail;
+    }
 };
 pub const update = Update.update;
 
@@ -529,7 +521,7 @@ fn deleteDirWithConfirm(
     stdin: *StdIn,
     stdout: *StdOut,
     dirPath: []const u8,
-    /// To be used with `Utils.confirm`.
+    /// To be passed to `Utils.confirm`.
     confirmQuery: anytype,
 ) DeleteDirWithConfirmError!void {
     const cwd = Dir.cwd();
@@ -618,7 +610,7 @@ inline fn getRootPath(
 
         return RootPathError.RootNameTooLong;
     }
-
+    // TODO: update it with `Utils.joinPath`.
     const slash = if (OS == .windows) '\\' else '/';
     const slashLen = 1;
 
@@ -630,4 +622,6 @@ inline fn getRootPath(
     );
 }
 
-// TODO: symlinks can work 'is_directory' on systems except windows
+// TODO: symlinks can work without 'stat' for 'is_directory' on systems except windows
+
+// TODO: 'follow symlinks' flag for 'add' and 'update' commands.

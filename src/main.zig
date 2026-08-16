@@ -24,7 +24,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
     var stderr: StdOut = block: {
         var buffer: [Cmd.STDERR_BUFFER_BYTES]u8 = undefined;
-        break :block .init(io, .Stderr, &buffer);
+        break :block .init(io, .StdErr, &buffer);
     };
 
     var args = switch (comptime OS) {
@@ -44,7 +44,7 @@ pub fn main(init: process.Init.Minimal) !void {
     if (args.next()) |cmd| {
         var stdout: StdOut = block: {
             var buffer: [Cmd.STDOUT_BUFFER_BYTES]u8 = undefined;
-            break :block .init(io, .Stdout, &buffer);
+            break :block .init(io, .StdErr, &buffer);
         };
 
         if (eqlCmd(cmd, "--help")) {
