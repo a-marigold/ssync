@@ -52,7 +52,7 @@ pub inline fn getUserPath(
     }
 }
 
-/// If `relativePath` is `.` or `./`, returns `pathBuffer[0..firstPathLen]`.
+/// If `relativePath` is `.` or `./`, returns the unchanged first path.
 /// Otherwise copies `relativePath` to `pathBuffer` starting from `firstPathLen`.
 ///
 /// `pathBuffer` must have length at least as max path bytes of system.
@@ -109,43 +109,6 @@ pub inline fn insertStr(
     return buffer[0..newLen];
 }
 
-/// Concats every string of `strings` into `buffer`.
-///
-/// `buffer` must have enough length.
-///
-/// Returns a slice in `buffer` containing concatinated strings.
-pub inline fn concatStr(buffer: []u8, strings: anytype) []const u8 {
-    var resultLen: usize = 0;
-
-    inline for (0..strings.len) |index| {
-        const string = strings[index];
-
-        comptime {
-            const isString = switch (@typeInfo(@TypeOf(string))) {
-                .array => |info| info.child == u8,
-
-                .pointer => |info| switch (@typeInfo(info.child)) {
-                    .array => |childInfo| childInfo.child == u8,
-                    .int => |childInfo| childInfo.bits == 8 and childInfo.signedness == .unsigned,
-                    else => false,
-                },
-
-                else => false,
-            };
-
-            if (!isString) {
-                @compileError(std.fmt.comptimePrint("Expected string at index {d}", .{index}));
-            }
-        }
-
-        @memcpy(buffer[0..string.len], string);
-
-        resultLen += string.len;
-    }
-
-    return buffer[0..resultLen];
-}
-
 /// High-level wrapper over buffered, streaming `stdin`.
 pub const StdIn = struct {
     reader: Io.File.Reader,
@@ -167,11 +130,11 @@ pub const StdIn = struct {
 pub const StdOut = struct {
     writer: Io.File.Writer,
 
-    pub inline fn init(io: Io, comptime stdoutType: enum { Stdout, Stderr }, buffer: []u8) @This() {
+    pub inline fn init(io: Io, comptime stdoutType: enum { StdOut, StdErr }, buffer: []u8) @This() {
         return .{
             .writer = switch (stdoutType) {
-                .Stdout => Io.File.stdout(),
-                .Stderr => Io.File.stderr(),
+                .StdOut => Io.File.stdout(),
+                .StdErr => Io.File.stderr(),
             }.writerStreaming(io, buffer),
         };
     }
