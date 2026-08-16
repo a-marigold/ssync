@@ -36,11 +36,14 @@ pub const STDERR_BUFFER_BYTES = 0;
 ///
 /// Messages don't end with line break.
 pub const Errors = struct {
+    const PREFIX = "error: ";
+
     pub inline fn ARG_EXPECTED(comptime argName: []const u8) []const u8 {
-        return "'" ++ argName ++ "' arg expected";
+        return PREFIX ++ "'" ++ argName ++ "' arg expected";
     }
 
-    const NON_RELATIVE_DEST = "'dest' must be a relative to 'root' path";
+    const CREATE_CONFIG_FAIL = PREFIX ++ "Failed to create config";
+    const NON_RELATIVE_DEST = PREFIX ++ "'dest' must be a relative to 'root' path";
 };
 
 const Help = struct {
@@ -150,7 +153,7 @@ const Config = struct {
         };
 
         createConfig(io, configPath) catch {
-            try stderr.write(.{"Failed to create config\n"});
+            try stderr.write(.{Errors.CREATE_CONFIG_FAIL});
         };
 
         output[configPath.len] = outputEndChar;
