@@ -27,28 +27,31 @@ pub inline fn getUserPath(
     env: process.Environ,
     buffer: []u8,
 ) UserPathError![]const u8 {
-    if (OS == .windows) {
-        const utf16Path = env.getWindows(
-            unicode.utf8ToUtf16LeStringLiteral("%USERPROFILE%"),
-        ) orelse {
-            return UserPathError.GetUserProfileEnvFail;
-        };
+    switch (OS) {
+        .windows => {
+            const utf16Path = env.getWindows(
+                unicode.utf8ToUtf16LeStringLiteral("%USERPROFILE%"),
+            ) orelse {
+                return UserPathError.GetUserProfileEnvFail;
+            };
 
-        const utf8PathLen = unicode.utf16LeToUtf8(buffer, utf16Path) catch {
-            return UserPathError.ConvertPathToUtf8Fail;
-        };
+            const utf8PathLen = unicode.utf16LeToUtf8(buffer, utf16Path) catch {
+                return UserPathError.ConvertPathToUtf8Fail;
+            };
 
-        return utf8PathLen;
-    } else {
-        const path = env.getPosix("HOME") orelse {
-            return UserPathError.GetHomeEnvFail;
-        };
+            return utf8PathLen;
+        },
+        else => {
+            const path = env.getPosix("HOME") orelse {
+                return UserPathError.GetHomeEnvFail;
+            };
 
-        const bufferPath = buffer[0..path.len];
+            const bufferPath = buffer[0..path.len];
 
-        @memcpy(bufferPath, path);
+            @memcpy(bufferPath, path);
 
-        return bufferPath;
+            return bufferPath;
+        },
     }
 }
 
@@ -69,9 +72,6 @@ pub inline fn joinPath(
     firstPathLen: usize,
     relativePath: []const u8,
 ) []const u8 {
-    const slash = if (OS == .windows) '\\' else '/';
-
-    const slashLen = 1;
 
     // If it starts with './', just copy including slash
     if (relativePath[0] == '.') {
@@ -83,9 +83,30 @@ pub inline fn joinPath(
         return insertStr(pathBuffer, firstPathLen, relativePath[1..]);
     }
 
+    const slash = if (OS == .windows) '\\' else '/';
+
+    const slashLen = 1;
+
     pathBuffer[firstPathLen] = slash;
 
     return insertStr(pathBuffer, firstPathLen + slashLen, relativePath);
+}
+
+/// Inserts `string` to `buffer` starting from `startIndex`.
+///
+/// `buffer` is assumed to have enough length to receive `string`.
+///
+/// Returns a slice of the result in `buffer`.
+pub inline fn insertStr(
+    buffer: []u8,
+    startIndex: usize,
+    string: []const u8,
+) []const u8 {
+    const newLen = startIndex + string.len;
+
+    @memcpy(buffer[startIndex..newLen], string);
+
+    return buffer[0..newLen];
 }
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
@@ -123,22 +144,6 @@ pub inline fn symLink(
             },
         },
     );
-}
-/// Inserts `string` to `buffer` starting from `startIndex`.
-///
-/// `buffer` is assumed to have enough length to receive `string`.
-///
-/// Returns a slice of the result in `buffer`.
-pub inline fn insertStr(
-    buffer: []u8,
-    startIndex: usize,
-    string: []const u8,
-) []const u8 {
-    const newLen = startIndex + string.len;
-
-    @memcpy(buffer[startIndex..newLen], string);
-
-    return buffer[0..newLen];
 }
 
 /// High-level wrapper over buffered, streaming `stdin`.
@@ -181,7 +186,11 @@ pub const StdOut = struct {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
         inline for (data) |slice| {
-            try writer.writeAll(slice);
+            if (slice.len == 1) {
+                try writer.writeByte(slice[0]);
+            } else {
+                try writer.writeAll(slice);
+            }
         }
     }
 
@@ -192,7 +201,7 @@ pub const StdOut = struct {
     }
 };
 
-pub const ConfirmError = error{UnknownChar} || StdIn.ReadError || StdOut.WriteError;
+pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 /// Writes `query` to `stdout`.
 ///
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
@@ -202,9 +211,9 @@ pub inline fn confirm(
     /// An array of slices (`StdOut.write` recevies data like that).
     query: anytype,
 ) ConfirmError!bool {
-    try stdout.write(query);
+    stdout.write(query) catch return ConfirmError.WriteFail;
 
-    const input = try stdin.readByte();
+    const input = stdin.readByte() catch return ConfirmError.ReadFail;
 
     return switch (input) {
         'y' => true,
