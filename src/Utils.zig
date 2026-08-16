@@ -92,6 +92,38 @@ pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
     return dir.createDir(io, path, Dir.Permissions.default_dir);
 }
 
+/// On windows, stats `targetPath` to find out is it a dir and passes appropriate flag to `dir.symLink` function.
+///
+/// On other platforms just creates symlink 'cause the mentioned flag does not matters there.
+pub inline fn symLink(
+    io: Io,
+    dir: Dir,
+    targetPath: []const u8,
+    symLinkPath: []const u8,
+) (switch (OS) {
+    .windows => Dir.SymLinkError || Dir.StatError,
+    else => Dir.SymLinkError,
+})!void {
+    return dir.symLink(
+        io,
+        targetPath,
+        symLinkPath,
+        .{
+            .is_directory = switch (OS) {
+                .windows => block: {
+                    const targetKind = (try dir.statFile(
+                        io,
+                        targetPath,
+                        .{ .follow_symlinks = true },
+                    )).kind;
+
+                    break :block targetKind == .directory;
+                },
+                else => null,
+            },
+        },
+    );
+}
 /// Inserts `string` to `buffer` starting from `startIndex`.
 ///
 /// `buffer` is assumed to have enough length to receive `string`.
@@ -189,6 +221,5 @@ pub fn __debug__(comptime fmt: []const u8, args: anytype) void {
     if (builtin.mode != .debug) {
         @compileError("'__debug__' is only for 'Debug' mode");
     }
-
     debug.print(fmt ++ "\n", args);
 }
