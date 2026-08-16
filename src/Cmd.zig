@@ -323,9 +323,12 @@ const Add = struct {
             destFullPath,
             .{ .is_directory = srcKind == .directory },
         ) catch return Error.SymLinkFail;
+
+        try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root." });
     }
 };
 pub const add = Add.add;
+
 pub const AddError = Add.Error;
 
 const Delete = struct {
@@ -610,14 +613,9 @@ inline fn getRootPath(
 
         return RootPathError.RootNameTooLong;
     }
-    // TODO: update it with `Utils.joinPath`.
-    const slash = if (OS == .windows) '\\' else '/';
-    const slashLen = 1;
-
-    pathBuffer[rootsDirPathLen] = slash;
-    return Utils.insertStr(
+    return Utils.joinPath(
         pathBuffer,
-        rootsDirPathLen + slashLen,
+        rootsDirPathLen,
         rootName,
     );
 }

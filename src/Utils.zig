@@ -186,11 +186,7 @@ pub const StdOut = struct {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
         inline for (data) |slice| {
-            if (slice.len == 1) {
-                try writer.writeByte(slice[0]);
-            } else {
-                try writer.writeAll(slice);
-            }
+            try writer.writeAll(slice);
         }
     }
 
