@@ -178,15 +178,20 @@ pub const StdOut = struct {
 
     pub const WriteError = Io.Writer.Error;
 
-    /// Outputs `data` to stdio.
-    pub inline fn write(self: *@This(), data: []const []const u8) WriteError!void {
+    /// Writes every slice of `data` to the buffer of `init` function
+    /// and outputs it if the buffer ends.
+    ///
+    /// `data` is an array (with comptime known length) of slices.
+    pub inline fn write(self: *@This(), data: anytype) WriteError!void {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
-        _ = try writer.vtable.drain(writer, data, 1);
+        inline for (data) |slice| {
+            try writer.writeAll(slice);
+        }
     }
 
     pub inline fn flush(self: *@This()) WriteError!void {
-        const writer: *Io.Writer = @constCast(&self.writer.inteface);
+        const writer: *Io.Writer = @constCast(&self.writer.interface);
 
         return writer.flush();
     }
@@ -199,8 +204,8 @@ pub const ConfirmError = error{UnknownChar} || StdIn.ReadError || StdOut.WriteEr
 pub inline fn confirm(
     stdin: *StdIn,
     stdout: *StdOut,
-    /// It is a slice of slices 'cause `StdOut.write` recevies data like that.
-    query: []const []const u8,
+    /// An array of slices (`StdOut.write` recevies data like that).
+    query: anytype,
 ) ConfirmError!bool {
     try stdout.write(query);
 
