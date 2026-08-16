@@ -10,36 +10,45 @@ const Cmd = @import("Cmd.zig");
 
 const Errors = Cmd.Errors;
 
-const __debug__ = Utils.__debug__;
-
 const OS = builtin.os.tag;
+
 const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 
 pub fn main(init: process.Init.Minimal) !void {
     const env = init.environ;
 
-    var arena: heap.ArenaAllocator = .init(heap.page_allocator);
-    const arenaAllocator = arena.allocator();
-
-    var threaded: Io.Threaded = .init(arenaAllocator, .{});
+    // Functions that use allocator in `Threaded` are not used, so `undefined` is passed
+    var threaded: Io.Threaded = .init(undefined, .{});
     const io = threaded.io();
 
-    var stderr: StdOut = .init(io, .Stderr, &.{});
+    var stderr: StdOut = block: {
+        var buffer: [Cmd.STDERR_BUFFER_BYTES]u8 = undefined;
+        break :block .init(io, .Stderr, &buffer);
+    };
 
-    var args = try init.args.iterateAllocator(arenaAllocator);
+    var args = switch (comptime OS) {
+        .linux, .macos => init.args.iterate(),
+        .windows => block: {
+            // Initialize allocator only for windows
+            var arena: heap.ArenaAllocator = .init(heap.page_allocator);
+            const arenaAllocator = arena.allocator();
+
+            break :block try init.args.iterateAllocator(arenaAllocator);
+        },
+        else => unreachable,
+    };
 
     _ = args.skip();
 
     if (args.next()) |cmd| {
         var stdout: StdOut = block: {
-            var buffer: [0]u8 = undefined;
+            var buffer: [Cmd.STDOUT_BUFFER_BYTES]u8 = undefined;
             break :block .init(io, .Stdout, &buffer);
         };
 
         if (eqlCmd(cmd, "--help")) {
             try Cmd.help(&stdout);
-
             Utils.exit(.Success);
         }
 
@@ -51,15 +60,15 @@ pub fn main(init: process.Init.Minimal) !void {
             };
 
             const rootName = args.next() orelse {
-                try stderr.write(&.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const srcPath = args.next() orelse {
-                try stderr.write(&.{Errors.ARG_EXPECTED("src") ++ "\n"});
+                try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
             const destPath = args.next() orelse {
-                try stderr.write(&.{Errors.ARG_EXPECTED("dest") ++ "\n"});
+                try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
@@ -72,24 +81,23 @@ pub fn main(init: process.Init.Minimal) !void {
                 srcPath,
                 destPath,
             );
-
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "delete")) {
             const rootName = args.next() orelse {
-                try stderr.write(&.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
+
             const rootFilePath = args.next() orelse {
-                try stderr.write(&.{Errors.ARG_EXPECTED("file") ++ "\n"});
+                try stderr.write(.{Errors.ARG_EXPECTED("file") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
             var stdin: StdIn = block: {
                 // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
                 var buffer: [1]u8 = undefined;
-
                 break :block .init(io, &buffer);
             };
 
@@ -104,20 +112,18 @@ pub fn main(init: process.Init.Minimal) !void {
 
             Utils.exit(.Success);
         }
-
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
-                try stderr.write(&.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
 
             try Cmd.create(io, env, &stdout, rootName);
-
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "list")) {
-            try Cmd.list(arenaAllocator, io, env, &stdout);
+            try Cmd.list(io, env, &stdout);
             Utils.exit(.Success);
         }
 

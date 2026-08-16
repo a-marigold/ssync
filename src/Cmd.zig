@@ -26,8 +26,11 @@ const StdOut = Utils.StdOut;
 
 pub const MAX_ROOT_NAME_BYTES = 100;
 
-/// The desired amount of bytes of `StdOut` buffer that fits every command.
-pub const STDOUT_BUFFER_BYTES = 170;
+/// The desired amount of bytes of stdout buffer that fits every command.
+pub const STDOUT_BUFFER_BYTES = Help.TEXT.len;
+
+/// `0` to make stderr unbufferred.
+pub const STDERR_BUFFER_BYTES = 0;
 
 /// Messages of all CLI logical errors.
 ///
@@ -39,42 +42,42 @@ pub const Errors = struct {
 };
 
 const Help = struct {
+    const TEXT =
+        \\Commands:
+        \\  list                         Show path to roots and all created roots.
+        \\
+        \\  config                       Show path to config and create it if doesn't exist.
+        \\
+        \\  create [root]                Create a root.
+        \\
+        \\  add [root, src, dest]        'root' is name of a root to copy 'src' file to.
+        \\                               'src' is path to a file in the system which is to be copied to 'dest'.
+        \\                               'dest' is a path relative to 'root' to copy 'src' to.
+        \\
+        \\  delete [root, ?file]         If 'file' specified, delete the 'file' in 'root'.
+        \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
+        \\
+        \\  update [root, newSrc, dest]  Make 'dest' in 'root' track 'newSrc' instead of the current.
+        \\
+        \\Terms:
+        \\  root  Synchronization root, root folder of data with a similar domain.
+        \\        Used to separate, for example, 'music', 'configs', 'editor' and so on.
+        \\        Roots can be handled differently in handlers, and that is the key purpose of them.
+        \\
+    ;
+
     /// Writes the help text to `stdout`.
     fn help(stdout: *StdOut) !void {
-        const text =
-            \\Commands:
-            \\  list                         Show path to roots and all created roots.
-            \\
-            \\  config                       Show path to config and create it if doesn't exist.
-            \\
-            \\  create [root]                Create a root.
-            \\
-            \\  add [root, src, dest]        'root' is name of a root to copy 'src' file to.
-            \\                               'src' is path to a file in the system which is to be copied to 'dest'.
-            \\                               'dest' is a path relative to 'root' to copy 'src' to.
-            \\
-            \\  delete [root, ?file]         If 'file' specified, delete the 'file' in 'root'.
-            \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
-            \\
-            \\  update [root, newSrc, dest]  Make 'dest' in 'root' track 'newSrc' instead of the current.
-            \\
-            \\Terms:
-            \\  root  Synchronization root, root folder of data with a similar domain.
-            \\        Used to separate, for example, 'music', 'configs', 'editor' and so on.
-            \\        Roots can be handled differently in handlers, and that is the key purpose of them.
-            \\
-        ;
-
-        try stdout.write(&.{text});
+        try stdout.write(.{TEXT});
     }
 };
 pub const help = Help.help;
 
 const List = struct {
     /// Writes output to `stdout`.
-    fn list(allocator: mem.Allocator, io: Io, env: Environ, stdout: *StdOut) !void {
+    fn list(io: Io, env: Environ, stdout: *StdOut) !void {
         // Capacity 170 is enough for most cases
-        var output: ArrayList(u8) = try .initCapacity(allocator, 170);
+        // var output: ArrayList(u8) = try .initCapacity(allocator, 170);
 
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try Utils.getUserPath(env, &userPathBuffer);
@@ -95,9 +98,9 @@ const List = struct {
                 .{ .iterate = true, .follow_symlinks = true },
             ) catch |err| {
                 if (err == Dir.OpenError.FileNotFound) {
-                    try output.appendSlice(allocator, noRootCreatedMsg);
+                    try stdout.write(.{noRootCreatedMsg});
 
-                    return stdout.write(&.{output.items});
+                    return stdout.flush();
                 }
 
                 return err;
@@ -112,14 +115,11 @@ const List = struct {
         };
 
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
-            try output.appendSlice(allocator, noRootCreatedMsg);
-
-            return stdout.write(&.{output.items});
+            try stdout.write(.{noRootCreatedMsg});
+            return stdout.flush();
         };
 
-        try output.appendSlice(allocator, "Roots are located in: ");
-        try output.appendSlice(allocator, rootsDirPath);
-        try output.appendSlice(allocator, "\n\nCreated roots:\n");
+        try stdout.write(.{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" });
 
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
@@ -128,14 +128,10 @@ const List = struct {
                 continue;
             }
 
-            try output.append(allocator, ' ');
-            try output.append(allocator, ' ');
-            try output.appendSlice(allocator, entry.name);
-
-            try output.append(allocator, '\n');
+            try stdout.write(.{ "  ", entry.name, "\n" });
         }
 
-        try stdout.write(&.{output.items});
+        return stdout.flush();
     }
 };
 pub const list = List.list;
@@ -155,12 +151,12 @@ const Config = struct {
         };
 
         createConfig(io, configPath) catch {
-            try stderr.write(&.{"Failed to create config\n"});
+            try stderr.write(.{"Failed to create config\n"});
         };
 
         output[configPath.len] = outputEndChar;
 
-        try stdout.write(&.{output[0 .. configPath.len + outputEndCharLen]});
+        try stdout.write(.{output[0 .. configPath.len + outputEndCharLen]});
     }
 
     inline fn createConfig(io: Io, configPath: []const u8) !void {
@@ -240,7 +236,7 @@ const Create = struct {
             }
         };
 
-        try stdout.write(&.{"Root was successfully created\n"});
+        try stdout.write(.{"Root was successfully created\n"});
     }
 };
 pub const create = Create.create;
@@ -254,7 +250,7 @@ const Add = struct {
         SymLinkFail,
     };
 
-    /// `stdin` is only used for confirmation for deletion.
+    /// `stdin` is only used for confirmation of deletion.
     ///
     /// Writes output to `stdout` on its own.
     fn add(
@@ -357,7 +353,7 @@ const Add = struct {
             stdin,
             stdout,
             rootPath,
-            &.{"Root is not empty. Delete it [y/n]? "},
+            .{"Root is not empty. Delete it [y/n]? "},
         );
 
         const srcFileKind = (cwd.statFile(
@@ -434,7 +430,7 @@ const Delete = struct {
                         stdin,
                         stdout,
                         fullFilePath,
-                        &.{ "'", fullFilePath, "' is a non-empty dir. Delete it [y/n]? " },
+                        .{ "'", fullFilePath, "' is a non-empty dir. Delete it [y/n]? " },
                     );
                 },
 
@@ -447,7 +443,7 @@ const Delete = struct {
             stdin,
             stdout,
             rootPath,
-            &.{"Root is not empty. Delete it [y/n]? "},
+            .{"Root is not empty. Delete it [y/n]? "},
         );
     }
 };
@@ -473,7 +469,7 @@ fn deleteDirWithConfirm(
     stdout: *StdOut,
     dirPath: []const u8,
     /// To be used with `Utils.confirm`.
-    confirmQuery: []const []const u8,
+    confirmQuery: anytype,
 ) DeleteDirWithConfirmError!void {
     const cwd = Dir.cwd();
 
