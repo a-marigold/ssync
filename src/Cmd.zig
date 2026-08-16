@@ -39,6 +39,8 @@ pub const Errors = struct {
     pub inline fn ARG_EXPECTED(comptime argName: []const u8) []const u8 {
         return "'" ++ argName ++ "' arg expected";
     }
+
+    const NON_RELATIVE_DEST = "'dest' must be a relative to 'root' path";
 };
 
 const Help = struct {
@@ -76,9 +78,6 @@ pub const help = Help.help;
 const List = struct {
     /// Writes output to `stdout`.
     fn list(io: Io, env: Environ, stdout: *StdOut) !void {
-        // Capacity 170 is enough for most cases
-        // var output: ArrayList(u8) = try .initCapacity(allocator, 170);
-
         var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
         const userPath = try Utils.getUserPath(env, &userPathBuffer);
 
@@ -237,6 +236,7 @@ const Create = struct {
         };
 
         try stdout.write(.{"Root was successfully created\n"});
+        return stdout.flush();
     }
 };
 pub const create = Create.create;
@@ -275,6 +275,20 @@ const Add = struct {
 
         const cwd = Dir.cwd();
 
+        const destFullPath = block: {
+            if (path.isAbsolute(destPath)) {
+                @branchHint(.cold);
+
+                return Error.DestPathAbsolute;
+            }
+
+            break :block Utils.joinPath(
+                &userPathBuffer,
+                rootPath.len,
+                destPath,
+            );
+        };
+
         const srcFullPath = block: {
             if (path.isAbsolute(srcPath)) {
                 break :block srcPath;
@@ -290,20 +304,6 @@ const Add = struct {
             };
 
             break :block buffer[0..fullPathLen];
-        };
-
-        const destFullPath = block: {
-            if (path.isAbsolute(destPath)) {
-                @branchHint(.cold);
-
-                return Error.DestPathAbsolute;
-            }
-
-            break :block Utils.joinPath(
-                &userPathBuffer,
-                rootPath.len,
-                destPath,
-            );
         };
 
         // Symlink the whole root
@@ -449,6 +449,65 @@ const Delete = struct {
 };
 pub const delete = Delete.delete;
 
+const Update = struct {
+    /// Uses `stdin` only for confirmation of directories deletion.
+    ///
+    /// Writes output to `stdout`.
+    ///
+    /// Critical errors are returned, but logical errors are handled with `stderr` and `null` is returned when they are.
+    fn update(
+        io: Io,
+        env: Environ,
+        stdin: *StdIn,
+        stdout: *StdOut,
+        stderr: *StdOut,
+        rootName: []const u8,
+        src: []const u8,
+        dest: []const u8,
+    ) !?void {
+        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
+        const userPath = try Utils.getUserPath(env, &userPathBuffer);
+
+        const rootsDirPath = getRootsDirPath(&userPathBuffer, userPath.len);
+
+        const rootPath = try getRootPath(
+            &userPathBuffer,
+            rootsDirPath.len,
+            rootName,
+        );
+
+        const destFullPath = block: {
+            if (path.isAbsolute(dest)) {
+                return stderr.write(.{Errors.NON_RELATIVE_DEST});
+            }
+
+            break :block Utils.joinPath(
+                userPathBuffer,
+                rootPath.len,
+                dest,
+            );
+        };
+
+        const cwd = Dir.cwd();
+
+        const srcFullPath = block: {
+            if (path.isAbsolute(src)) {
+                break :block src;
+            }
+
+            var buffer: [MAX_PATH_BYTES]u8 = undefined;
+            break :block try cwd.realPathFile(io, src, &buffer);
+        };
+
+        if (destFullPath.len == rootPath.len) {
+            return Add.replaceRoot(io, stdin, stdout, rootPath, srcFullPath);
+        }
+
+        try Utils.symLink(io, cwd, srcFullPath, srcFullPath);
+    }
+};
+pub const update = Update.update;
+
 //
 // --- Cmd Utils ---
 //
@@ -458,8 +517,7 @@ const DeleteDirWithConfirmError = error{
     DeleteFail,
     ConfirmationFail,
 };
-/// If the dir at `dirPath` is empty, just deletes it.
-///
+/// Deletes dir at `dirPath`.
 /// If the dir is not empty, confirms to delete it recursively.
 ///
 /// Uses `stdin` and `stdout` for confirmation.
@@ -568,3 +626,5 @@ inline fn getRootPath(
         rootName,
     );
 }
+
+// TODO: symlinks can work 'is_directory' on systems except windows
