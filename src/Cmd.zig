@@ -311,24 +311,17 @@ const Add = struct {
             return Error.CannotReplaceRoot;
         }
 
-        const srcKind = (cwd.statFile(
+        Utils.symLink(
             io,
-            srcFullPath,
-            .{ .follow_symlinks = true },
-        ) catch return Error.StatSrcFail).kind;
-
-        cwd.symLink(
-            io,
+            cwd,
             srcFullPath,
             destFullPath,
-            .{ .is_directory = srcKind == .directory },
         ) catch return Error.SymLinkFail;
 
-        try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root." });
+        try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
     }
 };
 pub const add = Add.add;
-
 pub const AddError = Add.Error;
 
 const Delete = struct {
@@ -496,6 +489,8 @@ const Update = struct {
             return ReplaceRootError.SrcNotDir;
         }
 
+        // `Utils.symLink` isn't used not to do `stat` on windows twice
+
         cwd.symLink(
             io,
             srcFullPath,
@@ -619,7 +614,5 @@ inline fn getRootPath(
         rootName,
     );
 }
-
-// TODO: symlinks can work without 'stat' for 'is_directory' on systems except windows
 
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
