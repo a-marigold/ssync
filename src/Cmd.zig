@@ -95,10 +95,7 @@ pub const help = Help.help;
 const List = struct {
     /// Errors returned by this function are only critical errors.
     fn list(io: Io, env: Environ, stdout: *StdOut) !void {
-        var pathBuilder: PathBuilder = .init();
-
-        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
-        pathBuilder.end = userPath.len;
+        var pathBuilder = try initUserPathBuilder(env);
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
@@ -203,10 +200,7 @@ const Create = struct {
         stdout: *StdOut,
         rootName: []const u8,
     ) !void {
-        var pathBuilder: PathBuilder = .init();
-
-        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
-        pathBuilder.end = userPath.len;
+        var pathBuilder = try initUserPathBuilder(env);
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
@@ -269,10 +263,7 @@ const Add = struct {
         srcPath: []const u8,
         destPath: []const u8,
     ) (Error || Utils.UserPathError || RootPathError)!void {
-        var pathBuilder: PathBuilder = .init();
-
-        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
-        pathBuilder.end = userPath.len;
+        var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
             if (rootName.len < MAX_ROOT_NAME_BYTES) {
@@ -337,10 +328,7 @@ const Delete = struct {
         rootName: []const u8,
         rootFilePath: ?[]const u8,
     ) !void {
-        var pathBuilder: PathBuilder = .init();
-
-        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
-        pathBuilder.end = userPath.len;
+        var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
             if (rootName.len > MAX_ROOT_NAME_BYTES) {
@@ -412,11 +400,8 @@ const Update = struct {
         rootName: []const u8,
         src: []const u8,
         dest: []const u8,
-    ) !?void {
-        var pathBuilder: PathBuilder = .init();
-
-        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
-        pathBuilder.len = userPath.len;
+    ) !void {
+        var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
             if (rootName.len > MAX_ROOT_NAME_BYTES) {
@@ -547,6 +532,21 @@ fn deleteDirWithConfirm(
         Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
         else => return DeleteDirWithConfirmError.DeleteFail,
     };
+}
+
+/// Initializes `PathBuilder` with copying the user path there.
+///
+/// `result.buffer[0..result.end]` contains the user path.
+inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
+    var pathBuilder: PathBuilder = .init();
+
+    const userPathLen = (try Utils.getUserPath(
+        env,
+        &pathBuilder.buffer,
+    )).len;
+    pathBuilder.end = userPathLen;
+
+    return pathBuilder;
 }
 
 /// Starting from `userPathLen`, copies platform-specific relative path
