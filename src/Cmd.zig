@@ -7,28 +7,42 @@ const ArrayList = std.ArrayList;
 const Io = std.Io;
 const Dir = Io.Dir;
 const File = Io.File;
-const path = Dir.path;
 const process = std.process;
 const Environ = process.Environ;
 const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
-
 const SsyncConfig = @import("SsyncConfig.zig");
 
 const __debug__ = Utils.__debug__;
 
 const OS = builtin.os.tag;
-
 const MAX_PATH_BYTES = Dir.max_path_bytes;
 
 const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 
+const Path = Utils.Path;
+
+/// Relatively to user path.
+const ROOTS_DIR_PATH = switch (OS) {
+    .linux => "/.local/share/ssync",
+    .macos => "/Library/Application Support/ssync",
+    .windows => "\\ssync",
+    else => unreachable,
+};
+
+/// Relatively to user path.
+const CONFIG_PATH = switch (OS) {
+    .linux => "/.config/ssync.toml",
+    .macos => "/Library/Application Support/ssync/ssync.toml",
+    .windows => "\\ssync\\ssync.toml",
+    else => unreachable,
+};
+
 pub const MAX_ROOT_NAME_BYTES = 100;
 
 /// The desired amount of bytes of stdout buffer that fits every command.
 pub const STDOUT_BUFFER_BYTES = Help.TEXT.len;
-
 /// `0` to make stderr unbufferred.
 pub const STDERR_BUFFER_BYTES = 0;
 
@@ -49,7 +63,7 @@ pub const Errors = struct {
 const Help = struct {
     const TEXT =
         \\Commands:
-        \\  list                         Show path to roots and all created roots.
+        \\  list                         Show path to roots and list created roots.
         \\
         \\  config                       Show path to config and create it if doesn't exist.
         \\
@@ -79,17 +93,14 @@ const Help = struct {
 pub const help = Help.help;
 
 const List = struct {
-    /// Writes output to `stdout`.
-    ///
     /// Errors returned by this function are only critical errors.
     fn list(io: Io, env: Environ, stdout: *StdOut) !void {
-        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try Utils.getUserPath(env, &userPathBuffer);
+        var path: Path = .init();
 
-        const rootsDirPath = getRootsDirPath(
-            &userPathBuffer,
-            userPath.len,
-        );
+        const userPath = try Utils.getUserPath(env, &path.buffer);
+        path.end = userPath.len;
+
+        const rootsDirPath = path.appendLiteral(ROOTS_DIR_PATH);
 
         const noRootCreatedMsg = "\nNo root created yet\n";
 
@@ -141,7 +152,6 @@ const List = struct {
 pub const list = List.list;
 
 const Config = struct {
-    /// Writes output to `stdout`.
     fn config(io: Io, env: Environ, stdout: *StdOut, stderr: *StdOut) !void {
         const outputEndChar = '\n';
         const outputEndCharLen = 1;
@@ -150,7 +160,6 @@ const Config = struct {
 
         const configPath = block: {
             const userPath = try Utils.getUserPath(env, &output);
-
             break :block getConfigPath(&output, userPath.len);
         };
 
@@ -187,30 +196,27 @@ const Config = struct {
 pub const config = Config.config;
 
 const Create = struct {
-    const Error = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail };
-
+    const Error = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail, RootNameTooLong };
     fn create(
         io: Io,
         env: Environ,
         stdout: *StdOut,
         rootName: []const u8,
     ) !void {
-        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try Utils.getUserPath(env, &userPathBuffer);
+        var path: Path = .init();
 
-        const rootsDirPath = getRootsDirPath(
-            &userPathBuffer,
-            userPath.len,
-        );
+        const userPath = try Utils.getUserPath(env, &path.buffer);
+        path.end = userPath.len;
+
+        const rootsDirPath = path.appendLiteral(ROOTS_DIR_PATH);
 
         const rootPath = block: {
-            break :block try getRootPath(
-                &userPathBuffer,
-                rootsDirPath.len,
-                rootName,
-            );
-        };
+            if (rootName.len > MAX_ROOT_NAME_BYTES) {
+                return Error.RootNameTooLong;
+            }
 
+            break :block path.append(rootName);
+        };
         const cwd = Dir.cwd();
 
         Utils.createDir(
@@ -224,7 +230,7 @@ const Create = struct {
                     Utils.createDir(
                         io,
                         cwd,
-                        rootPath,
+                        rootsDirPath,
                     ) catch return Error.CreateRootsDirFail;
 
                     Utils.createDir(
@@ -233,6 +239,7 @@ const Create = struct {
                         rootPath,
                     ) catch return Error.CreateRootFail;
                 },
+
                 Dir.CreateDirError.PathAlreadyExists => return Error.RootAlreadyExists,
                 else => return Error.CreateRootFail,
             }
@@ -247,14 +254,13 @@ pub const CreateError = Create.Error;
 
 const Add = struct {
     const Error = error{
+        RootNameTooLong,
         DestPathAbsolute,
         GetSrcFullPathFail,
         SymLinkFail,
         DestAlreadyExist,
         CannotReplaceRoot,
     };
-
-    /// Writes output to `stdout` on its own.
     fn add(
         io: Io,
         env: Environ,
@@ -263,35 +269,32 @@ const Add = struct {
         srcPath: []const u8,
         destPath: []const u8,
     ) (Error || Utils.UserPathError || RootPathError)!void {
-        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try Utils.getUserPath(env, &userPathBuffer);
+        var path: Path = .init();
 
-        const rootsDirPath = getRootsDirPath(&userPathBuffer, userPath.len);
+        const userPath = try Utils.getUserPath(env, &path.buffer);
+        path.end = userPath.len;
 
-        const rootPath = try getRootPath(
-            &userPathBuffer,
-            rootsDirPath.len,
-            rootName,
-        );
+        const rootPath = block: {
+            if (rootName.len < MAX_ROOT_NAME_BYTES) {
+                return Error.RootNameTooLong;
+            }
+
+            _ = path.appendLiteral(ROOTS_DIR_PATH);
+
+            break :block try path.append(rootName);
+        };
 
         const cwd = Dir.cwd();
 
-        const destFullPath = block: {
-            if (path.isAbsolute(destPath)) {
-                @branchHint(.cold);
-
-                return Error.DestPathAbsolute;
-            }
-
-            break :block Utils.joinPath(
-                &userPathBuffer,
-                rootPath.len,
-                destPath,
-            );
+        const destFullPath = path.append(
+            destPath,
+        ) catch |err| switch (err) {
+            Path.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
+            else => {},
         };
 
         const srcFullPath = block: {
-            if (path.isAbsolute(srcPath)) {
+            if (Path.isAbs(srcPath)) {
                 break :block srcPath;
             }
 
@@ -317,6 +320,7 @@ const Add = struct {
             srcFullPath,
             destFullPath,
         ) catch return Error.SymLinkFail;
+        // TODO: create dirs step-by-step
 
         try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
     }
@@ -325,7 +329,6 @@ pub const add = Add.add;
 pub const AddError = Add.Error;
 
 const Delete = struct {
-    // Writes output to `stdout`.
     pub fn delete(
         io: Io,
         env: Environ,
@@ -334,32 +337,29 @@ const Delete = struct {
         rootName: []const u8,
         rootFilePath: ?[]const u8,
     ) !void {
-        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try Utils.getUserPath(env, &userPathBuffer);
+        var path: Path = .init();
+
+        const userPath = try Utils.getUserPath(env, &path.buffer);
+        path.end = userPath.len;
 
         const rootPath = block: {
-            const rootsDirPath = getRootsDirPath(
-                &userPathBuffer,
-                userPath.len,
-            );
+            if (rootName.len > MAX_ROOT_NAME_BYTES) {
+                return; // TODO
+            }
 
-            break :block try getRootPath(
-                &userPathBuffer,
-                rootsDirPath.len,
-                rootName,
-            );
+            _ = path.appendLiteral(ROOTS_DIR_PATH);
+
+            break :block path.append(rootName);
         };
 
         const cwd = Dir.cwd();
 
         if (rootFilePath) |filePath| {
-            if (path.isAbsolute(filePath)) {
+            if (Path.isAbs(filePath)) {
                 return;
             }
 
-            const fullFilePath = Utils.joinPath(
-                &userPathBuffer,
-                rootPath.len,
+            const fullFilePath = path.append(
                 filePath,
             );
 
@@ -413,33 +413,31 @@ const Update = struct {
         src: []const u8,
         dest: []const u8,
     ) !?void {
-        var userPathBuffer: [MAX_PATH_BYTES]u8 = undefined;
-        const userPath = try Utils.getUserPath(env, &userPathBuffer);
+        var path: Path = .init();
 
-        const rootsDirPath = getRootsDirPath(&userPathBuffer, userPath.len);
+        const userPath = try Utils.getUserPath(env, &path.buffer);
+        path.len = userPath.len;
 
-        const rootPath = try getRootPath(
-            &userPathBuffer,
-            rootsDirPath.len,
-            rootName,
-        );
-
-        const destFullPath = block: {
-            if (path.isAbsolute(dest)) {
-                return stderr.write(.{Errors.NON_RELATIVE_DEST});
+        const rootPath = block: {
+            if (rootName.len > MAX_ROOT_NAME_BYTES) {
+                return; // TODO
             }
 
-            break :block Utils.joinPath(
-                userPathBuffer,
-                rootPath.len,
-                dest,
-            );
+            _ = path.appendLiteral(ROOTS_DIR_PATH);
+            break :block path.append(rootName);
+        };
+
+        const destFullPath = path.append(
+            dest,
+        ) catch |err| switch (err) {
+            Path.AppendError.RelativePathAbsolute => stderr.write(Errors.NON_RELATIVE_DEST),
+            else => {}, // TODO
         };
 
         const cwd = Dir.cwd();
 
         const srcFullPath = block: {
-            if (path.isAbsolute(src)) {
+            if (Path.isAbs(src)) {
                 break :block src;
             }
 
@@ -616,3 +614,9 @@ inline fn getRootPath(
 }
 
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
+
+// TODO: 'args' and 'flags' structs for commands
+
+// TODO: initUserPath
+
+// TODO: checkRootName
