@@ -5,6 +5,7 @@ const Dir = Io.Dir;
 const process = std.process;
 const unicode = std.unicode;
 const debug = std.debug;
+const assert = debug.assert;
 const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
@@ -110,6 +111,10 @@ pub inline fn insertStr(
 pub const Path = struct {
     buffer: [MAX_PATH_BYTES]u8,
     /// The end of current path in `buffer`. After this elements are `undefined`.
+    ///
+    ///
+    ///
+    /// Never includes trailing slash.
     end: usize,
 
     /// Copies `absPath` to initialized `Path.buffer`.
@@ -126,6 +131,8 @@ pub const Path = struct {
         RelativePathAbsolute,
     };
     /// Appends `relPath` to the path.
+    ///
+    /// Invalidates `end` of the path.
     ///
     /// Resolves relativness of the first `relPath` component (`./abc`).
     ///
@@ -181,7 +188,7 @@ pub const Path = struct {
 
                     path[newEnd] = secondChar;
                     newEnd += 1;
-
+                    // TODO: fix trailing slash
                     return path.buffer[0..newEnd];
                 },
             }
@@ -197,6 +204,24 @@ pub const Path = struct {
 
         @memcpy(path.buffer[newEnd..relPath.len], relPath);
         newEnd += relPath.len;
+
+        return path.buffer[0..newEnd];
+    }
+
+    /// Invalidates `end` of the path.
+    ///
+    /// `literalPath` must start with a slash.
+    ///
+    /// Comptime asserts that `literalPath` does not end with a slash.
+    pub inline fn appendLiteral(path: *@This(), comptime literalPath: []const u8) []const u8 {
+        const slash = if (OS == .windows) '\\' else '/';
+        comptime assert(literalPath[0] == slash and literalPath[literalPath.len - 1] != slash);
+
+        var newEnd = 0;
+        defer path.end = newEnd;
+
+        @memcpy(&path.buffer[newEnd..][0..literalPath.len], literalPath);
+        newEnd += literalPath.len;
 
         return path.buffer[0..newEnd];
     }
