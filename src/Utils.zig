@@ -9,9 +9,10 @@ const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
 
+const MAX_PATH_BYTES = Dir.max_path_bytes;
+
 pub const UserPathError = error{
     GetUserProfileEnvFail,
-
     /// Only on windows.
     ConvertPathToUtf8Fail,
     GetHomeEnvFail,
@@ -23,7 +24,7 @@ pub const UserPathError = error{
 ///
 /// Returns a slice of the path in `buffer` or `UserPathError`.
 pub inline fn getUserPath(
-    /// `process.Environ` from which to read the user dir path.
+    /// Used to read the user dir path.
     env: process.Environ,
     buffer: []u8,
 ) UserPathError![]const u8 {
@@ -31,20 +32,17 @@ pub inline fn getUserPath(
         .windows => {
             const utf16Path = env.getWindows(
                 unicode.utf8ToUtf16LeStringLiteral("%USERPROFILE%"),
-            ) orelse {
-                return UserPathError.GetUserProfileEnvFail;
-            };
+            ) orelse return UserPathError.GetUserProfileEnvFail;
 
-            const utf8PathLen = unicode.utf16LeToUtf8(buffer, utf16Path) catch {
-                return UserPathError.ConvertPathToUtf8Fail;
-            };
+            const utf8PathLen = unicode.utf16LeToUtf8(
+                buffer,
+                utf16Path,
+            ) catch return UserPathError.ConvertPathToUtf8Fail;
 
-            return utf8PathLen;
+            return buffer[0..utf8PathLen];
         },
         else => {
-            const path = env.getPosix("HOME") orelse {
-                return UserPathError.GetHomeEnvFail;
-            };
+            const path = env.getPosix("HOME") orelse return UserPathError.GetHomeEnvFail;
 
             const bufferPath = buffer[0..path.len];
 
@@ -110,19 +108,14 @@ pub inline fn insertStr(
 }
 
 pub const Path = struct {
-    buffer: [Dir.max_path_bytes]u8,
-
+    buffer: [MAX_PATH_BYTES]u8,
     /// The end of current path in `buffer`. After this elements are `undefined`.
     end: usize,
 
     /// Copies `absPath` to initialized `Path.buffer`.
-    pub inline fn initAbs(absPath: []const u8) @This() {
+    pub inline fn init() @This() {
         return .{
-            .buffer = block: {
-                var buffer: [Dir.max_path_bytes]u8 = undefined;
-                @memcpy(buffer[0..absPath], absPath);
-                break :block buffer;
-            },
+            .buffer = undefined,
             .end = 0,
         };
     }
@@ -215,6 +208,8 @@ pub const Path = struct {
             else => path[0] == '/',
         };
     }
+
+    // TODO: add 'appendLiteral'
 };
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
