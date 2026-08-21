@@ -54,43 +54,6 @@ pub inline fn getUserPath(
     }
 }
 
-/// If `relativePath` is `.` or `./`, returns the unchanged first path.
-/// Otherwise copies `relativePath` to `pathBuffer` starting from `firstPathLen`.
-///
-/// `pathBuffer` must have length at least as max path bytes of system.
-///
-/// `pathBuffer[0..firstPathLen]` must contain the firstPath without trailing slash.
-///
-/// `relativePath` must be relative and have length at least 1.
-///
-/// Resolves `./` and `.\` in `relativePath`.
-///
-/// Returns a slice of the result in `pathBuffer`.
-pub inline fn joinPath(
-    pathBuffer: []u8,
-    firstPathLen: usize,
-    relativePath: []const u8,
-) []const u8 {
-
-    // If it starts with './', just copy including slash
-    if (relativePath[0] == '.') {
-        // Only '.' or './'
-        if (relativePath.len <= 2) {
-            return pathBuffer[0..firstPathLen];
-        }
-
-        return insertStr(pathBuffer, firstPathLen, relativePath[1..]);
-    }
-
-    const slash = if (OS == .windows) '\\' else '/';
-
-    const slashLen = 1;
-
-    pathBuffer[firstPathLen] = slash;
-
-    return insertStr(pathBuffer, firstPathLen + slashLen, relativePath);
-}
-
 /// Inserts `str` to `buffer` starting from `startIndex`.
 ///
 /// `buffer` is assumed to have enough length to receive `str`.
@@ -322,9 +285,14 @@ pub const StdOut = struct {
         }
     }
 
-    pub inline fn flush(self: *@This()) WriteError!void {
+    pub inline fn writeByte(self: *@This(), byte: u8) WriteError!void {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
+        return writer.writeByte(byte);
+    }
+
+    pub inline fn flush(self: *@This()) WriteError!void {
+        const writer: *Io.Writer = @constCast(&self.writer.interface);
         return writer.flush();
     }
 };
