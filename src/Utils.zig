@@ -115,16 +115,31 @@ pub const Path = struct {
     /// The end of current path in `buffer`. After this elements are `undefined`.
     end: usize,
 
+    /// Copies `absPath` to initialized `Path.buffer`.
+    pub inline fn initAbs(absPath: []const u8) @This() {
+        return .{
+            .buffer = block: {
+                var buffer: [Dir.max_path_bytes]u8 = undefined;
+                @memcpy(buffer[0..absPath], absPath);
+                break :block buffer;
+            },
+            .end = 0,
+        };
+    }
+
     pub const AppendError = error{
         /// When `relativePath` starts with `..`
         RelativePathBeyond,
         RelativePathAbsolute,
     };
-
     /// Appends `relPath` to the path.
     ///
     /// Resolves relativness of the first `relPath` component (`./abc`).
-    /// If the first component is like `../`, returns an error 'cause it cannot be appended.
+    ///
+    /// If the first component is like `../` (goes beyond the current path),
+    /// returns an error 'cause it cannot be appended.
+    ///
+    /// If `relPath` is absolute, returns an error.
     ///
     /// `relPath` must have length at least 1.
     ///
@@ -177,7 +192,7 @@ pub const Path = struct {
                     return path.buffer[0..newEnd];
                 },
             }
-        } else if (isAbsolute(relPath)) {
+        } else if (isAbs(relPath)) {
             return AppendError.RelativePathAbsolute;
         }
 
@@ -194,7 +209,7 @@ pub const Path = struct {
     }
 
     /// `path` must have length at least 1.
-    pub fn isAbsolute(path: []const u8) bool {
+    pub fn isAbs(path: []const u8) bool {
         return switch (OS) {
             .windows => Dir.path.isAbsoluteWindows(path),
             else => path[0] == '/',
