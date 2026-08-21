@@ -150,23 +150,16 @@ pub const list = List.list;
 
 const Config = struct {
     fn config(io: Io, env: Environ, stdout: *StdOut, stderr: *StdOut) !void {
-        const outputEndChar = '\n';
-        const outputEndCharLen = 1;
+        var pathBuilder = try initUserPathBuilder(env);
 
-        var output: [MAX_PATH_BYTES + outputEndCharLen]u8 = undefined;
-
-        const configPath = block: {
-            const userPath = try Utils.getUserPath(env, &output);
-            break :block getConfigPath(&output, userPath.len);
-        };
+        const configPath = pathBuilder.appendLiteral(CONFIG_PATH);
 
         createConfig(io, configPath) catch {
             try stderr.write(.{Errors.CREATE_CONFIG_FAIL});
         };
 
-        output[configPath.len] = outputEndChar;
-
-        try stdout.write(.{output[0 .. configPath.len + outputEndCharLen]});
+        try stdout.write(.{configPath});
+        try stdout.writeByte('\n');
     }
     inline fn createConfig(io: Io, configPath: []const u8) !void {
         const cwd = Dir.cwd();
@@ -262,7 +255,7 @@ const Add = struct {
         rootName: []const u8,
         srcPath: []const u8,
         destPath: []const u8,
-    ) (Error || Utils.UserPathError || RootPathError)!void {
+    ) (Error || Utils.UserPathError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -549,71 +542,6 @@ inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
     return pathBuilder;
 }
 
-/// Starting from `userPathLen`, copies platform-specific relative path
-/// of the roots dir to `pathBuffer`, which already contains user path
-///
-/// `userPathLen` must not include trailing slash.
-///
-/// Returns a slice of the full roots dir path.
-inline fn getRootsDirPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-    return Utils.insertStr(
-        pathBuffer,
-        userPathLen,
-        switch (OS) {
-            .linux => "/.local/share/ssync",
-            .macos => "/Library/Application Support/ssync",
-            .windows => "\\ssync",
-            else => unreachable,
-        },
-    );
-}
-
-/// Starting from `userPathLEn`, copies platfrom specific relative path
-/// of the config to `pathBuffer`, which already contains the user path.
-///
-/// `userPathLen` must not include trailing slash.
-///
-/// Returns a slice of the full config path.
-inline fn getConfigPath(pathBuffer: []u8, userPathLen: usize) []const u8 {
-    return Utils.insertStr(
-        pathBuffer,
-        userPathLen,
-        switch (OS) {
-            .linux => "/.config/ssync.toml",
-            .macos => "/Library/Application Support/ssync/ssync.toml",
-            .windows => "\\ssync\\ssync.toml",
-            else => unreachable,
-        },
-    );
-}
-
-const RootPathError = error{RootNameTooLong};
-/// Starting from `rootsDirPathLen`, copies `rootName` to `pathBuffer`,
-/// which already contains roots dir path.
-///
-/// `rootsDirPathLen` must not include trailing slash.
-///
-/// Resolves slashes.
-///
-/// Returns a slice of the full root path.
-inline fn getRootPath(
-    pathBuffer: []u8,
-    rootsDirPathLen: usize,
-    rootName: []const u8,
-) RootPathError![]const u8 {
-    if (rootName.len > MAX_ROOT_NAME_BYTES) {
-        @branchHint(.cold);
-
-        return RootPathError.RootNameTooLong;
-    }
-    return Utils.joinPath(
-        pathBuffer,
-        rootsDirPathLen,
-        rootName,
-    );
-}
-
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
 // TODO: 'args' and 'flags' structs for commands
-// TODO: initUserPath
 // TODO: checkRootName
