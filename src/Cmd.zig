@@ -21,7 +21,7 @@ const MAX_PATH_BYTES = Dir.max_path_bytes;
 const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 
-const Path = Utils.Path;
+const PathBuilder = Utils.PathBuilder;
 
 /// Relatively to user path.
 const ROOTS_DIR_PATH = switch (OS) {
@@ -95,12 +95,12 @@ pub const help = Help.help;
 const List = struct {
     /// Errors returned by this function are only critical errors.
     fn list(io: Io, env: Environ, stdout: *StdOut) !void {
-        var path: Path = .init();
+        var pathBuilder: PathBuilder = .init();
 
-        const userPath = try Utils.getUserPath(env, &path.buffer);
-        path.end = userPath.len;
+        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
+        pathBuilder.end = userPath.len;
 
-        const rootsDirPath = path.appendLiteral(ROOTS_DIR_PATH);
+        const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
         const noRootCreatedMsg = "\nNo root created yet\n";
 
@@ -203,19 +203,19 @@ const Create = struct {
         stdout: *StdOut,
         rootName: []const u8,
     ) !void {
-        var path: Path = .init();
+        var pathBuilder: PathBuilder = .init();
 
-        const userPath = try Utils.getUserPath(env, &path.buffer);
-        path.end = userPath.len;
+        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
+        pathBuilder.end = userPath.len;
 
-        const rootsDirPath = path.appendLiteral(ROOTS_DIR_PATH);
+        const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
         const rootPath = block: {
             if (rootName.len > MAX_ROOT_NAME_BYTES) {
                 return Error.RootNameTooLong;
             }
 
-            break :block path.append(rootName);
+            break :block pathBuilder.append(rootName);
         };
         const cwd = Dir.cwd();
 
@@ -269,32 +269,32 @@ const Add = struct {
         srcPath: []const u8,
         destPath: []const u8,
     ) (Error || Utils.UserPathError || RootPathError)!void {
-        var path: Path = .init();
+        var pathBuilder: PathBuilder = .init();
 
-        const userPath = try Utils.getUserPath(env, &path.buffer);
-        path.end = userPath.len;
+        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
+        pathBuilder.end = userPath.len;
 
         const rootPath = block: {
             if (rootName.len < MAX_ROOT_NAME_BYTES) {
                 return Error.RootNameTooLong;
             }
 
-            _ = path.appendLiteral(ROOTS_DIR_PATH);
+            _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block try path.append(rootName);
+            break :block try pathBuilder.append(rootName);
         };
 
         const cwd = Dir.cwd();
 
-        const destFullPath = path.append(
+        const destFullPath = pathBuilder.append(
             destPath,
         ) catch |err| switch (err) {
-            Path.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
+            PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
             else => {},
         };
 
         const srcFullPath = block: {
-            if (Path.isAbs(srcPath)) {
+            if (Utils.isPathAbs(srcPath)) {
                 break :block srcPath;
             }
 
@@ -337,29 +337,29 @@ const Delete = struct {
         rootName: []const u8,
         rootFilePath: ?[]const u8,
     ) !void {
-        var path: Path = .init();
+        var pathBuilder: PathBuilder = .init();
 
-        const userPath = try Utils.getUserPath(env, &path.buffer);
-        path.end = userPath.len;
+        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
+        pathBuilder.end = userPath.len;
 
         const rootPath = block: {
             if (rootName.len > MAX_ROOT_NAME_BYTES) {
                 return; // TODO
             }
 
-            _ = path.appendLiteral(ROOTS_DIR_PATH);
+            _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block path.append(rootName);
+            break :block pathBuilder.append(rootName);
         };
 
         const cwd = Dir.cwd();
 
         if (rootFilePath) |filePath| {
-            if (Path.isAbs(filePath)) {
+            if (Utils.isPathAbs(filePath)) {
                 return;
             }
 
-            const fullFilePath = path.append(
+            const fullFilePath = pathBuilder.append(
                 filePath,
             );
 
@@ -413,31 +413,31 @@ const Update = struct {
         src: []const u8,
         dest: []const u8,
     ) !?void {
-        var path: Path = .init();
+        var pathBuilder: PathBuilder = .init();
 
-        const userPath = try Utils.getUserPath(env, &path.buffer);
-        path.len = userPath.len;
+        const userPath = try Utils.getUserPath(env, &pathBuilder.buffer);
+        pathBuilder.len = userPath.len;
 
         const rootPath = block: {
             if (rootName.len > MAX_ROOT_NAME_BYTES) {
                 return; // TODO
             }
 
-            _ = path.appendLiteral(ROOTS_DIR_PATH);
-            break :block path.append(rootName);
+            _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
+            break :block pathBuilder.append(rootName);
         };
 
-        const destFullPath = path.append(
+        const destFullPath = pathBuilder.append(
             dest,
         ) catch |err| switch (err) {
-            Path.AppendError.RelativePathAbsolute => stderr.write(Errors.NON_RELATIVE_DEST),
+            PathBuilder.AppendError.RelativePathAbsolute => stderr.write(Errors.NON_RELATIVE_DEST),
             else => {}, // TODO
         };
 
         const cwd = Dir.cwd();
 
         const srcFullPath = block: {
-            if (Path.isAbs(src)) {
+            if (Utils.isPathAbs(src)) {
                 break :block src;
             }
 
@@ -614,9 +614,6 @@ inline fn getRootPath(
 }
 
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
-
 // TODO: 'args' and 'flags' structs for commands
-
 // TODO: initUserPath
-
 // TODO: checkRootName

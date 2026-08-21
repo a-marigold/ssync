@@ -108,16 +108,27 @@ pub inline fn insertStr(
     return buffer[0..newLen];
 }
 
-pub const Path = struct {
+/// `path` must have length at least 1.
+pub fn isPathAbs(path: []const u8) bool {
+    return switch (OS) {
+        .windows => Dir.path.isAbsoluteWindows(path),
+
+        else => path[0] == '/',
+    };
+}
+
+/// Path builder.
+///
+/// The path can only grow, so it is safe
+/// to reuse previous paths after calling `Path.append`.
+pub const PathBuilder = struct {
     buffer: [MAX_PATH_BYTES]u8,
     /// The end of current path in `buffer`. After this elements are `undefined`.
-    ///
-    ///
     ///
     /// Never includes trailing slash.
     end: usize,
 
-    /// Copies `absPath` to initialized `Path.buffer`.
+    /// Copies `absPath` to initialized `PathBuilder.buffer`.
     pub inline fn init() @This() {
         return .{
             .buffer = undefined,
@@ -188,11 +199,13 @@ pub const Path = struct {
 
                     path[newEnd] = secondChar;
                     newEnd += 1;
+
                     // TODO: fix trailing slash
+
                     return path.buffer[0..newEnd];
                 },
             }
-        } else if (isAbs(relPath)) {
+        } else if (isPathAbs(relPath)) {
             return AppendError.RelativePathAbsolute;
         }
 
@@ -217,24 +230,14 @@ pub const Path = struct {
         const slash = if (OS == .windows) '\\' else '/';
         comptime assert(literalPath[0] == slash and literalPath[literalPath.len - 1] != slash);
 
-        var newEnd = 0;
+        var newEnd = path.end;
         defer path.end = newEnd;
 
-        @memcpy(&path.buffer[newEnd..][0..literalPath.len], literalPath);
+        @memcpy(path.buffer[newEnd..][0..literalPath.len], literalPath);
         newEnd += literalPath.len;
 
         return path.buffer[0..newEnd];
     }
-
-    /// `path` must have length at least 1.
-    pub fn isAbs(path: []const u8) bool {
-        return switch (OS) {
-            .windows => Dir.path.isAbsoluteWindows(path),
-            else => path[0] == '/',
-        };
-    }
-
-    // TODO: add 'appendLiteral'
 };
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {

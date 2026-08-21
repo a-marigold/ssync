@@ -53,12 +53,6 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "add")) {
-            var stdin: StdIn = block: {
-                // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
-                var buffer: [1]u8 = undefined;
-                break :block .init(io, &buffer);
-            };
-
             const rootName = args.next() orelse {
                 try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
                 Utils.exit(.InvalidArg);
@@ -75,7 +69,6 @@ pub fn main(init: process.Init.Minimal) !void {
             try Cmd.add(
                 io,
                 env,
-                &stdin,
                 &stdout,
                 rootName,
                 srcPath,
