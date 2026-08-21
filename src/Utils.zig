@@ -92,27 +92,124 @@ pub inline fn joinPath(
     return insertStr(pathBuffer, firstPathLen + slashLen, relativePath);
 }
 
-/// Inserts `string` to `buffer` starting from `startIndex`.
+/// Inserts `str` to `buffer` starting from `startIndex`.
 ///
-/// `buffer` is assumed to have enough length to receive `string`.
+/// `buffer` is assumed to have enough length to receive `str`.
 ///
 /// Returns a slice of the result in `buffer`.
 pub inline fn insertStr(
     buffer: []u8,
     startIndex: usize,
-    string: []const u8,
+    str: []const u8,
 ) []const u8 {
-    const newLen = startIndex + string.len;
+    const newLen = startIndex + str.len;
 
-    @memcpy(buffer[startIndex..newLen], string);
+    @memcpy(buffer[startIndex..newLen], str);
 
     return buffer[0..newLen];
 }
+
+pub const Path = struct {
+    buffer: [Dir.max_path_bytes]u8,
+
+    /// The end of current path in `buffer`. After this elements are `undefined`.
+    end: usize,
+
+    pub const AppendError = error{
+        /// When `relativePath` starts with `..`
+        RelativePathBeyond,
+        RelativePathAbsolute,
+    };
+
+    /// Appends `relPath` to the path.
+    ///
+    /// Resolves relativness of the first `relPath` component (`./abc`).
+    /// If the first component is like `../`, returns an error 'cause it cannot be appended.
+    ///
+    /// `relPath` must have length at least 1.
+    ///
+    /// Returns a slice of the new path.
+    pub fn append(path: *@This(), relPath: []const u8) AppendError![]const u8 {
+        const slash = if (OS == .windows) '\\' else '/';
+
+        if (relPath[0] == '.') {
+            if (relPath.len == 1) {
+                return path[path.end];
+            }
+
+            const secondChar = relPath[1];
+
+            switch (secondChar) {
+                '/' => if (relPath.len == 2) {
+                    return path[0..path.end];
+                } else {
+                    @branchHint(.likely);
+
+                    // Reuse the slash
+                    var newEnd = path.end;
+                    defer path.end = newEnd;
+
+                    const normalRelPath = relPath[1..];
+
+                    @memcpy(path.buffer[newEnd..][0..normalRelPath.len], normalRelPath);
+                    newEnd += normalRelPath.len - 1;
+
+                    return path.buffer[0..newEnd];
+                },
+
+                // Return error for `..` or `../`.
+                // Otherwise it is a valid path like `..abc`
+                '.' => if (relPath.len == 2 or relPath[2] == '/') {
+                    @branchHint(.unlikely);
+                    return AppendError.RelativePathBeyond;
+                },
+
+                else => {
+                    var newEnd = path.end;
+                    defer path.end = newEnd;
+
+                    path[newEnd] = slash;
+                    newEnd += 1;
+
+                    path[newEnd] = secondChar;
+                    newEnd += 1;
+
+                    return path.buffer[0..newEnd];
+                },
+            }
+        } else if (isAbsolute(relPath)) {
+            return AppendError.RelativePathAbsolute;
+        }
+
+        var newEnd = path.end;
+        defer path.end = newEnd;
+
+        path[newEnd] = slash;
+        newEnd += 1;
+
+        @memcpy(path.buffer[newEnd..relPath.len], relPath);
+        newEnd += relPath.len;
+
+        return path.buffer[0..newEnd];
+    }
+
+    /// `path` must have length at least 1.
+    pub fn isAbsolute(path: []const u8) bool {
+        return switch (OS) {
+            .windows => Dir.path.isAbsoluteWindows(path),
+            else => path[0] == '/',
+        };
+    }
+};
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
     return dir.createDir(io, path, Dir.Permissions.default_dir);
 }
 
+pub const SymLinkError = switch (OS) {
+    .windows => Dir.SymLinkError | Dir.StatError,
+    else => Dir.SymLinkError,
+};
 /// On windows, stats `targetPath` to find out is it a dir and passes appropriate flag to `dir.symLink` function.
 ///
 /// On other platforms just creates symlink 'cause the mentioned flag does not matters there.
@@ -121,10 +218,7 @@ pub inline fn symLink(
     dir: Dir,
     targetPath: []const u8,
     symLinkPath: []const u8,
-) (switch (OS) {
-    .windows => Dir.SymLinkError || Dir.StatError,
-    else => Dir.SymLinkError,
-})!void {
+) SymLinkError!void {
     return dir.symLink(
         io,
         targetPath,
@@ -140,7 +234,7 @@ pub inline fn symLink(
 
                     break :block targetKind == .directory;
                 },
-                else => null,
+                else => false,
             },
         },
     );
@@ -228,3 +322,5 @@ pub fn __debug__(comptime fmt: []const u8, args: anytype) void {
     }
     debug.print(fmt ++ "\n", args);
 }
+
+// TODO: 'Path' struct with builder and iterator
