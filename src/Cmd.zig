@@ -1,4 +1,11 @@
 //! The CLI commands.
+//!
+//! Each command writes its output ot `stdout` by its own,
+//! but errors are returned to be handled in the command caller.
+//!
+//! Commands have error unions (e.g `AddError` for `add`)
+//! that contain mostly logical errors and have appropriate error messages.
+//! Errors, returned by commands, but not included in their error unions are implied as critical.
 
 const std = @import("std");
 const mem = std.mem;
@@ -149,19 +156,20 @@ const List = struct {
 pub const list = List.list;
 
 const Config = struct {
-    fn config(io: Io, env: Environ, stdout: *StdOut, stderr: *StdOut) !void {
+    const Error = error{ WriteConfigFail, StatConfigFail };
+    fn config(io: Io, env: Environ, stdout: *StdOut) (Error || Utils.UserPathError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const configPath = pathBuilder.appendLiteral(CONFIG_PATH);
 
-        createConfig(io, configPath) catch {
-            try stderr.write(.{Errors.CREATE_CONFIG_FAIL});
-        };
+        try createConfig(io, configPath);
 
         try stdout.write(.{configPath});
         try stdout.writeByte('\n');
     }
-    inline fn createConfig(io: Io, configPath: []const u8) !void {
+
+    /// Tries to create config only if it doesn't exist.
+    inline fn createConfig(io: Io, configPath: []const u8) Error!void {
         const cwd = Dir.cwd();
 
         // Happy path is when config exists, Sad path is when does not
@@ -169,17 +177,14 @@ const Config = struct {
             io,
             configPath,
             .{ .follow_symlinks = false },
-        ) catch |err| {
-            switch (err) {
-                Dir.StatFileError.FileNotFound => {
-                    try cwd.writeFile(io, .{
-                        .sub_path = configPath,
-                        .data = SsyncConfig.CONFIG_FILE_TEXT,
-                        .flags = .{},
-                    });
-                },
-                else => return err,
-            }
+        ) catch |err| return switch (err) {
+            Dir.StatFileError.FileNotFound => cwd.writeFile(io, .{
+                .sub_path = configPath,
+                .data = SsyncConfig.CONFIG_FILE_TEXT,
+                .flags = .{},
+            }) catch Error.WriteConfigFail,
+
+            else => Error.StatConfigFail,
         };
     }
 };
@@ -190,8 +195,6 @@ const Create = struct {
         RootAlreadyExists,
         CreateRootFail,
         CreateRootsDirFail,
-        RootNameTooLong,
-        RootNameHasSeparator,
     } || CheckRootNameError;
     fn create(
         io: Io,
@@ -548,7 +551,7 @@ inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
 
 const CheckRootNameError = error{
     RootNameTooLong,
-    RootNameWithSlash,
+    RootNameHasSlash,
 };
 /// Root names cannot be more than `MAX_ROOT_NAME_BYTES` and cannot include slashes (path separators).
 fn checkRootName(name: []const u8) CheckRootNameError!void {
@@ -558,10 +561,10 @@ fn checkRootName(name: []const u8) CheckRootNameError!void {
 
     switch (OS) {
         .windows => if (mem.find(u8, name, "/") or mem.find(u8, name, "\\")) {
-            return CheckRootNameError.RootNameWithSlash;
+            return CheckRootNameError.RootNameHasSlash;
         },
         else => if (mem.find(u8, name, "/")) {
-            return CheckRootNameError.RootNameWithSlash;
+            return CheckRootNameError.RootNameHasSlash;
         },
     }
 }
