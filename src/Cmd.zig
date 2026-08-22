@@ -156,8 +156,12 @@ const List = struct {
 pub const list = List.list;
 
 const Config = struct {
-    const Error = error{ WriteConfigFail, StatConfigFail };
-    fn config(io: Io, env: Environ, stdout: *StdOut) (Error || Utils.UserPathError)!void {
+    const Error = CreateConfigError;
+    fn config(
+        io: Io,
+        env: Environ,
+        stdout: *StdOut,
+    ) (Error || Utils.UserPathError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const configPath = pathBuilder.appendLiteral(CONFIG_PATH);
@@ -166,10 +170,12 @@ const Config = struct {
 
         try stdout.write(.{configPath});
         try stdout.writeByte('\n');
+        try stdout.flush();
     }
 
+    const CreateConfigError = error{ WriteConfigFail, StatConfigFail };
     /// Tries to create config only if it doesn't exist.
-    inline fn createConfig(io: Io, configPath: []const u8) Error!void {
+    inline fn createConfig(io: Io, configPath: []const u8) CreateConfigError!void {
         const cwd = Dir.cwd();
 
         // Happy path is when config exists, Sad path is when does not
@@ -201,7 +207,7 @@ const Create = struct {
         env: Environ,
         stdout: *StdOut,
         rootName: []const u8,
-    ) !void {
+    ) (Error || Utils.UserPathError || StdOut.WriteError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
