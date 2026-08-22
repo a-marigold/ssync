@@ -42,6 +42,12 @@ pub fn main(init: process.Init.Minimal) !void {
     _ = args.skip();
 
     if (args.next()) |cmd| {
+        var stdin: StdIn = block: {
+            // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
+            var buffer: [1]u8 = undefined;
+            break :block .init(io, &buffer);
+        };
+
         var stdout: StdOut = block: {
             var buffer: [Cmd.STDOUT_BUFFER_BYTES]u8 = undefined;
             break :block .init(io, .StdErr, &buffer);
@@ -87,12 +93,7 @@ pub fn main(init: process.Init.Minimal) !void {
                 try stderr.write(.{Errors.ARG_EXPECTED("file") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
-
-            var stdin: StdIn = block: {
-                // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
-                var buffer: [1]u8 = undefined;
-                break :block .init(io, &buffer);
-            };
+            // TODO: fix the thing above
 
             try Cmd.delete(
                 io,
@@ -105,6 +106,36 @@ pub fn main(init: process.Init.Minimal) !void {
 
             Utils.exit(.Success);
         }
+
+        if (eqlCmd(cmd, "update")) {
+            const rootName = args.next() orelse {
+                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                Utils.exit(.InvalidArg);
+            };
+
+            const srcPath = args.next() orelse {
+                try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
+                Utils.exit(.InvalidArg);
+            };
+
+            const destPath = args.next() orelse {
+                try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
+                Utils.exit(.InvalidArg);
+            };
+
+            try Cmd.update(
+                io,
+                env,
+                &stdin,
+                &stdout,
+                rootName,
+                srcPath,
+                destPath,
+            );
+
+            Utils.exit(.Success);
+        }
+
         if (eqlCmd(cmd, "create")) {
             const rootName = args.next() orelse {
                 try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
