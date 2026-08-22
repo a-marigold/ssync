@@ -186,7 +186,13 @@ const Config = struct {
 pub const config = Config.config;
 
 const Create = struct {
-    const Error = error{ RootAlreadyExists, CreateRootFail, CreateRootsDirFail, RootNameTooLong };
+    const Error = error{
+        RootAlreadyExists,
+        CreateRootFail,
+        CreateRootsDirFail,
+        RootNameTooLong,
+        RootNameHasSeparator,
+    } || CheckRootNameError;
     fn create(
         io: Io,
         env: Environ,
@@ -197,13 +203,11 @@ const Create = struct {
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-        const rootPath = block: {
-            if (rootName.len > MAX_ROOT_NAME_BYTES) {
-                return Error.RootNameTooLong;
-            }
+        try checkRootName(rootName);
+        const rootPath = pathBuilder.append(
+            rootName,
+        ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
 
-            break :block pathBuilder.append(rootName);
-        };
         const cwd = Dir.cwd();
 
         Utils.createDir(
@@ -243,11 +247,11 @@ const Add = struct {
     const Error = error{
         RootNameTooLong,
         DestPathAbsolute,
-        GetSrcFullPathFail,
+        GetSrcAbsPathFail,
         SymLinkFail,
         DestAlreadyExist,
         CannotReplaceRoot,
-    };
+    } || CheckRootNameError;
     fn add(
         io: Io,
         env: Environ,
@@ -259,50 +263,48 @@ const Add = struct {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
-            if (rootName.len < MAX_ROOT_NAME_BYTES) {
-                return Error.RootNameTooLong;
-            }
+            try checkRootName(rootName);
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block try pathBuilder.append(rootName);
+            break :block pathBuilder.append(
+                rootName,
+            ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
         };
 
         const cwd = Dir.cwd();
 
-        const destFullPath = pathBuilder.append(
-            destPath,
-        ) catch |err| switch (err) {
-            PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
-            else => {},
-        };
+        const destAbsPath =
+            pathBuilder.append(destPath) catch |err| switch (err) {
+                PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
+                else => {},
+            };
 
-        const srcFullPath = block: {
+        const srcAbsPath = block: {
             if (Utils.isPathAbs(srcPath)) {
                 break :block srcPath;
             }
 
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
-            const fullPathLen = cwd.realPathFile(
+            const absPathLen = cwd.realPathFile(
                 io,
                 srcPath,
                 &buffer,
             ) catch {
-                return Error.GetSrcFullPathFail;
+                return Error.GetSrcAbsPathFail;
             };
-
-            break :block buffer[0..fullPathLen];
+            break :block buffer[0..absPathLen];
         };
 
-        if (destFullPath.len == rootPath.len) {
+        if (destAbsPath.len == rootPath.len) {
             return Error.CannotReplaceRoot;
         }
 
         Utils.symLink(
             io,
             cwd,
-            srcFullPath,
-            destFullPath,
+            srcAbsPath,
+            destAbsPath,
         ) catch return Error.SymLinkFail;
         // TODO: create dirs step-by-step
 
@@ -324,13 +326,13 @@ const Delete = struct {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
-            if (rootName.len > MAX_ROOT_NAME_BYTES) {
-                return; // TODO
-            }
+            try checkRootName(rootName);
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block pathBuilder.append(rootName);
+            break :block pathBuilder.append(
+                rootName,
+            ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
         };
 
         const cwd = Dir.cwd();
@@ -340,26 +342,26 @@ const Delete = struct {
                 return;
             }
 
-            const fullFilePath = pathBuilder.append(
+            const fileAbsPath = pathBuilder.append(
                 filePath,
             );
 
             const fileKind = (try cwd.statFile(
                 io,
-                fullFilePath,
+                fileAbsPath,
                 .{ .follow_symlinks = true },
             )).kind;
 
             switch (fileKind) {
-                .file => try cwd.deleteFile(io, fullFilePath),
+                .file => try cwd.deleteFile(io, fileAbsPath),
 
                 .directory => {
                     try deleteDirWithConfirm(
                         io,
                         stdin,
                         stdout,
-                        fullFilePath,
-                        .{ "'", fullFilePath, "' is a non-empty dir. Delete it [y/n]? " },
+                        fileAbsPath,
+                        .{ "'", fileAbsPath, "' is a non-empty dir. Delete it [y/n]? " },
                     );
                 },
 
@@ -397,24 +399,26 @@ const Update = struct {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
-            if (rootName.len > MAX_ROOT_NAME_BYTES) {
-                return; // TODO
-            }
+            try checkRootName(rootName);
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
-            break :block pathBuilder.append(rootName);
+
+            break :block pathBuilder.append(
+                rootName,
+            ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
         };
 
-        const destFullPath = pathBuilder.append(
+        const destAbsPath = pathBuilder.append(
             dest,
         ) catch |err| switch (err) {
             PathBuilder.AppendError.RelativePathAbsolute => stderr.write(Errors.NON_RELATIVE_DEST),
+
             else => {}, // TODO
         };
 
         const cwd = Dir.cwd();
 
-        const srcFullPath = block: {
+        const srcAbsPath = block: {
             if (Utils.isPathAbs(src)) {
                 break :block src;
             }
@@ -423,11 +427,11 @@ const Update = struct {
             break :block try cwd.realPathFile(io, src, &buffer);
         };
 
-        if (destFullPath.len == rootPath.len) {
-            return Add.replaceRoot(io, stdin, stdout, rootPath, srcFullPath);
+        if (destAbsPath.len == rootPath.len) {
+            return Add.replaceRoot(io, stdin, stdout, rootPath, srcAbsPath);
         }
 
-        try Utils.symLink(io, cwd, srcFullPath, srcFullPath);
+        try Utils.symLink(io, cwd, srcAbsPath, srcAbsPath);
     }
 
     const ReplaceRootError = error{
@@ -435,7 +439,7 @@ const Update = struct {
         SrcNotDir,
         SymLinkRootFail,
     } || DeleteDirWithConfirmError;
-    /// Deletes a root at `rootPath` and places a symlink targeting `srcFullPath` there.
+    /// Deletes a root at `rootPath` and places a symlink targeting `srcAbsPath` there.
     ///
     /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.
     inline fn replaceRoot(
@@ -443,7 +447,7 @@ const Update = struct {
         stdin: *StdIn,
         stdout: *StdOut,
         rootPath: []const u8,
-        srcFullPath: []const u8,
+        srcAbsPath: []const u8,
     ) ReplaceRootError!void {
         const cwd = Dir.cwd();
 
@@ -457,7 +461,7 @@ const Update = struct {
 
         const srcFileKind = (cwd.statFile(
             io,
-            srcFullPath,
+            srcAbsPath,
             .{ .follow_symlinks = true },
         ) catch return ReplaceRootError.StatSrcFail).kind;
 
@@ -469,7 +473,7 @@ const Update = struct {
 
         cwd.symLink(
             io,
-            srcFullPath,
+            srcAbsPath,
             rootPath,
             .{ .is_directory = true },
         ) catch return ReplaceRootError.SymLinkRootFail;
@@ -542,6 +546,25 @@ inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
     return pathBuilder;
 }
 
+const CheckRootNameError = error{
+    RootNameTooLong,
+    RootNameWithSlash,
+};
+/// Root names cannot be more than `MAX_ROOT_NAME_BYTES` and cannot include slashes (path separators).
+fn checkRootName(name: []const u8) CheckRootNameError!void {
+    if (name.len > MAX_ROOT_NAME_BYTES) {
+        return CheckRootNameError.RootNameTooLong;
+    }
+
+    switch (OS) {
+        .windows => if (mem.find(u8, name, "/") or mem.find(u8, name, "\\")) {
+            return CheckRootNameError.RootNameWithSlash;
+        },
+        else => if (mem.find(u8, name, "/")) {
+            return CheckRootNameError.RootNameWithSlash;
+        },
+    }
+}
+
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
 // TODO: 'args' and 'flags' structs for commands
-// TODO: checkRootName
