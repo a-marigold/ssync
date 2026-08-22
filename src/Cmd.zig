@@ -302,9 +302,7 @@ const Add = struct {
                 io,
                 srcPath,
                 &buffer,
-            ) catch {
-                return Error.GetSrcAbsPathFail;
-            };
+            ) catch return Error.GetSrcAbsPathFail;
             break :block buffer[0..absPathLen];
         };
 
@@ -401,23 +399,32 @@ const Delete = struct {
     }
 };
 pub const delete = Delete.delete;
+pub const DeleteError = Delete.Error;
 
 const Update = struct {
+    const Error = error{
+        DestPathAbsolute,
+
+        SymLinkFail,
+        SymLinkRootFail,
+
+        GetSrcAbsPathFail,
+        ReplaceRootFail,
+
+        /// When a whole root is being updated
+        SrcNotDir,
+    } || CheckRootNameError;
+
     /// Uses `stdin` only for confirmation of directories deletion.
-    ///
-    /// Writes output to `stdout`.
-    ///
-    /// Critical errors are returned, but logical errors are handled with `stderr` and `null` is returned when they are.
     fn update(
         io: Io,
         env: Environ,
         stdin: *StdIn,
         stdout: *StdOut,
-        stderr: *StdOut,
         rootName: []const u8,
         src: []const u8,
         dest: []const u8,
-    ) !void {
+    ) (Error || Utils.UserPathError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -429,12 +436,11 @@ const Update = struct {
                 unreachable; // `rootName` can't have path separators so `append` errors can't appear
         };
 
-        const destAbsPath = pathBuilder.append(
-            dest,
-        ) catch |err| switch (err) {
-            PathBuilder.AppendError.RelativePathAbsolute => stderr.write(Errors.NON_RELATIVE_DEST),
-            else => {}, // TODO
-        };
+        const destAbsPath = pathBuilder.append(dest) catch |err|
+            return switch (err) {
+                PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
+                else => unreachable, // TODO
+            };
 
         const cwd = Dir.cwd();
 
@@ -442,21 +448,42 @@ const Update = struct {
             if (Utils.isPathAbs(src)) {
                 break :block src;
             }
+
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
-            break :block try cwd.realPathFile(io, src, &buffer);
+            const absPathLen = cwd.realPathFile(
+                io,
+                src,
+                &buffer,
+            ) catch return Error.GetSrcAbsPathFail;
+            break :block buffer[0..absPathLen];
         };
 
         if (destAbsPath.len == rootPath.len) {
-            return Add.replaceRoot(io, stdin, stdout, rootPath, srcAbsPath);
+            return replaceRoot(
+                io,
+                stdin,
+                stdout,
+                rootPath,
+                srcAbsPath,
+            ) catch |err| switch (err) {
+                ReplaceRootError.SrcNotDir => Error.SrcNotDir,
+                ReplaceRootError.SymLinkFail => Error.SymLinkRootFail,
+                else => Error.ReplaceRootFail,
+            };
         }
 
-        try Utils.symLink(io, cwd, srcAbsPath, srcAbsPath);
+        Utils.symLink(
+            io,
+            cwd,
+            srcAbsPath,
+            destAbsPath,
+        ) catch return Error.SymLinkFail;
     }
 
     const ReplaceRootError = error{
         StatSrcFail,
         SrcNotDir,
-        SymLinkRootFail,
+        SymLinkFail,
     } || DeleteDirWithConfirmError;
     /// Deletes a root at `rootPath` and places a symlink targeting `srcAbsPath` there.
     ///
@@ -489,16 +516,16 @@ const Update = struct {
         }
 
         // `Utils.symLink` isn't used not to do `stat` on windows twice
-
         cwd.symLink(
             io,
             srcAbsPath,
             rootPath,
             .{ .is_directory = true },
-        ) catch return ReplaceRootError.SymLinkRootFail;
+        ) catch return ReplaceRootError.SymLinkFail;
     }
 };
 pub const update = Update.update;
+pub const UpdateError = Update.Error;
 
 //
 // --- Cmd Utils ---
