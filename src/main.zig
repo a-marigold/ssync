@@ -121,7 +121,7 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "config")) {
-            try Cmd.config(io, env, &stdout, &stderr);
+            try Cmd.config(io, env, &stdout);
             Utils.exit(.Success);
         }
     }

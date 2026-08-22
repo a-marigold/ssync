@@ -104,9 +104,7 @@ pub const PathBuilder = struct {
         RelativePathBeyond,
         RelativePathAbsolute,
     };
-    /// Appends `relPath` to the path.
-    ///
-    /// Invalidates `end` of the path.
+    /// Appends `relPath` to the path and invalidates `end` of the path.
     ///
     /// Resolves relativness of the first `relPath` component (`./abc`).
     ///
@@ -121,16 +119,18 @@ pub const PathBuilder = struct {
     pub fn append(path: *@This(), relPath: []const u8) AppendError![]const u8 {
         const slash = if (OS == .windows) '\\' else '/';
 
+        const buffer = @constCast(&path.buffer);
+
         if (relPath[0] == '.') {
             if (relPath.len == 1) {
-                return path[path.end];
+                return buffer[0..path.end];
             }
 
             const secondChar = relPath[1];
 
             switch (secondChar) {
                 '/' => if (relPath.len == 2) {
-                    return path[0..path.end];
+                    return buffer[0..path.end];
                 } else {
                     @branchHint(.likely);
 
@@ -140,10 +140,10 @@ pub const PathBuilder = struct {
 
                     const normalRelPath = relPath[1..];
 
-                    @memcpy(path.buffer[newEnd..][0..normalRelPath.len], normalRelPath);
+                    @memcpy(buffer[newEnd..][0..normalRelPath.len], normalRelPath);
                     newEnd += normalRelPath.len - 1;
 
-                    return path.buffer[0..newEnd];
+                    return buffer[0..newEnd];
                 },
 
                 // Return error for `..` or `../`.
@@ -157,15 +157,14 @@ pub const PathBuilder = struct {
                     var newEnd = path.end;
                     defer path.end = newEnd;
 
-                    path[newEnd] = slash;
+                    buffer[newEnd] = slash;
                     newEnd += 1;
 
-                    path[newEnd] = secondChar;
+                    buffer[newEnd] = secondChar;
                     newEnd += 1;
 
                     // TODO: fix trailing slash
-
-                    return path.buffer[0..newEnd];
+                    return buffer[0..newEnd];
                 },
             }
         } else if (isPathAbs(relPath)) {
@@ -175,13 +174,13 @@ pub const PathBuilder = struct {
         var newEnd = path.end;
         defer path.end = newEnd;
 
-        path[newEnd] = slash;
+        buffer[newEnd] = slash;
         newEnd += 1;
 
-        @memcpy(path.buffer[newEnd..relPath.len], relPath);
+        @memcpy(buffer[newEnd..relPath.len], relPath);
         newEnd += relPath.len;
 
-        return path.buffer[0..newEnd];
+        return buffer[0..newEnd];
     }
 
     /// Invalidates `end` of the path.
@@ -193,13 +192,15 @@ pub const PathBuilder = struct {
         const slash = if (OS == .windows) '\\' else '/';
         comptime assert(literalPath[0] == slash and literalPath[literalPath.len - 1] != slash);
 
+        const buffer = @constCast(&path.buffer);
+
         var newEnd = path.end;
         defer path.end = newEnd;
 
-        @memcpy(path.buffer[newEnd..][0..literalPath.len], literalPath);
+        @memcpy(buffer[newEnd..][0..literalPath.len], literalPath);
         newEnd += literalPath.len;
 
-        return path.buffer[0..newEnd];
+        return buffer[0..newEnd];
     }
 };
 

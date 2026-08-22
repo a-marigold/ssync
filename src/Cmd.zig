@@ -93,14 +93,17 @@ const Help = struct {
     ;
 
     /// Writes the help text to `stdout`.
+    ///
+    /// Errors returned by this function are only critical.
     fn help(stdout: *StdOut) !void {
         try stdout.write(.{TEXT});
+        try stdout.flush();
     }
 };
 pub const help = Help.help;
 
 const List = struct {
-    /// Errors returned by this function are only critical errors.
+    /// Errors returned by this function are only critical.
     fn list(io: Io, env: Environ, stdout: *StdOut) !void {
         var pathBuilder = try initUserPathBuilder(env);
 
@@ -161,7 +164,7 @@ const Config = struct {
         io: Io,
         env: Environ,
         stdout: *StdOut,
-    ) (Error || Utils.UserPathError)!void {
+    ) (Error || Utils.UserPathError || StdOut.WriteError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const configPath = pathBuilder.appendLiteral(CONFIG_PATH);
@@ -268,7 +271,7 @@ const Add = struct {
         rootName: []const u8,
         srcPath: []const u8,
         destPath: []const u8,
-    ) (Error || Utils.UserPathError)!void {
+    ) (Error || Utils.UserPathError || StdOut.WriteError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -283,10 +286,10 @@ const Add = struct {
 
         const cwd = Dir.cwd();
 
-        const destAbsPath =
-            pathBuilder.append(destPath) catch |err| switch (err) {
+        const destAbsPath = pathBuilder.append(destPath) catch |err|
+            return switch (err) {
                 PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
-                else => {},
+                else => unreachable, // TODO
             };
 
         const srcAbsPath = block: {
@@ -315,15 +318,23 @@ const Add = struct {
             srcAbsPath,
             destAbsPath,
         ) catch return Error.SymLinkFail;
+
         // TODO: create dirs step-by-step
 
         try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
+        try stdout.flush();
     }
 };
 pub const add = Add.add;
 pub const AddError = Add.Error;
 
 const Delete = struct {
+    const Error = error{
+        FilePathAbsolute,
+        StatFileFail,
+        DeleteRootFail,
+        DeleteFileFail,
+    } || CheckRootNameError;
     pub fn delete(
         io: Io,
         env: Environ,
@@ -331,7 +342,7 @@ const Delete = struct {
         stdout: *StdOut,
         rootName: []const u8,
         rootFilePath: ?[]const u8,
-    ) !void {
+    ) (Error || Utils.UserPathError || StdOut.WriteError || DeleteDirWithConfirmError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -346,45 +357,47 @@ const Delete = struct {
 
         const cwd = Dir.cwd();
 
-        if (rootFilePath) |filePath| {
-            if (Utils.isPathAbs(filePath)) {
-                return;
-            }
-
-            const fileAbsPath = pathBuilder.append(
-                filePath,
-            );
-
-            const fileKind = (try cwd.statFile(
+        if (rootFilePath == null) {
+            return deleteDirWithConfirm(
                 io,
-                fileAbsPath,
-                .{ .follow_symlinks = true },
-            )).kind;
-
-            switch (fileKind) {
-                .file => try cwd.deleteFile(io, fileAbsPath),
-
-                .directory => {
-                    try deleteDirWithConfirm(
-                        io,
-                        stdin,
-                        stdout,
-                        fileAbsPath,
-                        .{ "'", fileAbsPath, "' is a non-empty dir. Delete it [y/n]? " },
-                    );
-                },
-
-                else => unreachable,
-            }
+                stdin,
+                stdout,
+                rootPath,
+                .{"Root is not empty. Delete it [y/n]? "},
+            ) catch |err| switch (err) {
+                DeleteDirWithConfirmError.DeleteFail => Error.DeleteRootFail,
+                else => err,
+            };
         }
 
-        try deleteDirWithConfirm(
+        const filePath = rootFilePath.?;
+
+        const fileAbsPath = pathBuilder.append(filePath) catch |err|
+            return switch (err) {
+                PathBuilder.AppendError.RelativePathAbsolute => Error.FilePathAbsolute,
+                else => unreachable, // TODO
+            };
+
+        const fileKind = (cwd.statFile(
             io,
-            stdin,
-            stdout,
-            rootPath,
-            .{"Root is not empty. Delete it [y/n]? "},
-        );
+            fileAbsPath,
+            .{ .follow_symlinks = true },
+        ) catch return Error.StatFileFail).kind;
+
+        return switch (fileKind) {
+            .file => cwd.deleteFile(io, fileAbsPath) catch Error.DeleteFileFail,
+            .directory => deleteDirWithConfirm(
+                io,
+                stdin,
+                stdout,
+                fileAbsPath,
+                .{ "'", fileAbsPath, "' is a non-empty dir. Delete it [y/n]? " },
+            ) catch |err| switch (err) {
+                DeleteDirWithConfirmError.DeleteFail => Error.DeleteFileFail,
+                else => err,
+            },
+            else => unreachable,
+        };
     }
 };
 pub const delete = Delete.delete;
@@ -412,16 +425,14 @@ const Update = struct {
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block pathBuilder.append(
-                rootName,
-            ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
+            break :block pathBuilder.append(rootName) catch
+                unreachable; // `rootName` can't have path separators so `append` errors can't appear
         };
 
         const destAbsPath = pathBuilder.append(
             dest,
         ) catch |err| switch (err) {
             PathBuilder.AppendError.RelativePathAbsolute => stderr.write(Errors.NON_RELATIVE_DEST),
-
             else => {}, // TODO
         };
 
@@ -431,7 +442,6 @@ const Update = struct {
             if (Utils.isPathAbs(src)) {
                 break :block src;
             }
-
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
             break :block try cwd.realPathFile(io, src, &buffer);
         };
@@ -566,10 +576,10 @@ fn checkRootName(name: []const u8) CheckRootNameError!void {
     }
 
     switch (OS) {
-        .windows => if (mem.find(u8, name, "/") or mem.find(u8, name, "\\")) {
+        .windows => if (mem.find(u8, name, "/") != null or mem.find(u8, name, "\\") != null) {
             return CheckRootNameError.RootNameHasSlash;
         },
-        else => if (mem.find(u8, name, "/")) {
+        else => if (mem.find(u8, name, "/") != null) {
             return CheckRootNameError.RootNameHasSlash;
         },
     }
