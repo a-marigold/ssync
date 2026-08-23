@@ -54,23 +54,6 @@ pub inline fn getUserPath(
     }
 }
 
-/// Inserts `str` to `buffer` starting from `startIndex`.
-///
-/// `buffer` is assumed to have enough length to receive `str`.
-///
-/// Returns a slice of the result in `buffer`.
-pub inline fn insertStr(
-    buffer: []u8,
-    startIndex: usize,
-    str: []const u8,
-) []const u8 {
-    const newLen = startIndex + str.len;
-
-    @memcpy(buffer[startIndex..newLen], str);
-
-    return buffer[0..newLen];
-}
-
 pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
     return mem.findPosLinear(u8, str, 0, searchValue);
 }
@@ -103,95 +86,40 @@ pub const PathBuilder = struct {
         };
     }
 
-    pub const AppendError = error{
-        /// When `relativePath` starts with `..`
-        RelativePathBeyond,
-        RelativePathAbsolute,
-    };
-    /// Appends `relPath` to the path and invalidates `end` of the path.
+    /// Joins `relPath` with the current path in `buffer`, invalidating `end`.
     ///
-    /// Resolves relativness of the first `relPath` component (`./abc`).
+    /// Passing an absolute path here causes a wrong behaviour.
     ///
-    /// If the first component is like `../` (goes beyond the current path),
-    /// returns an error 'cause it cannot be appended.
+    /// Asserts that `buffer` has enough length to receive `relPath`.
     ///
-    /// If `relPath` is absolute, returns an error.
-    ///
-    /// `relPath` must have length at least 1.
-    ///
-    /// Returns a slice of the new path.
-    pub fn append(self: *@This(), relPath: []const u8) AppendError![]const u8 {
-        const slash = if (OS == .windows) '\\' else '/';
+    /// Returns a slice of the result in `buffer`.
+    pub fn append(self: *@This(), relPath: []const u8) []const u8 {
+        const buffer = @constCast(self.buffer);
 
-        const buffer = @constCast(&self.buffer);
+        assert(self.end + relPath.len < buffer.len);
 
-        if (relPath[0] == '.') {
-            if (relPath.len == 1) {
-                return buffer[0..self.end];
-            }
-
-            const secondChar = relPath[1];
-
-            switch (secondChar) {
-                '/' => if (relPath.len == 2) {
-                    return buffer[0..self.end];
-                } else {
-                    @branchHint(.likely);
-
-                    // Reuse the slash
-                    var newEnd = self.end;
-                    defer self.end = newEnd;
-
-                    const normalRelPath = relPath[1..];
-
-                    @memcpy(buffer[newEnd..][0..normalRelPath.len], normalRelPath);
-                    newEnd += normalRelPath.len - 1;
-
-                    return buffer[0..newEnd];
-                },
-
-                // Return error for `..` or `../`.
-                // Otherwise it is a valid path like `..abc`
-                '.' => if (relPath.len == 2 or relPath[2] == '/') {
-                    @branchHint(.unlikely);
-                    return AppendError.RelativePathBeyond;
-                },
-
-                else => {
-                    var newEnd = self.end;
-                    defer self.end = newEnd;
-
-                    buffer[newEnd] = slash;
-                    newEnd += 1;
-
-                    buffer[newEnd] = secondChar;
-                    newEnd += 1;
-
-                    // TODO: fix trailing slash
-                    return buffer[0..newEnd];
-                },
-            }
-        } else if (isPathAbs(relPath)) {
-            return AppendError.RelativePathAbsolute;
-        }
-
-        var newEnd = self.end;
+        var newEnd = 0;
         defer self.end = newEnd;
 
-        buffer[newEnd] = slash;
+        buffer[newEnd] = '/';
         newEnd += 1;
 
-        @memcpy(buffer[newEnd..relPath.len], relPath);
+        @memcpy(buffer[newEnd..][0..relPath.len], relPath);
+
         newEnd += relPath.len;
+
+        // Omit trailing slash
+        newEnd -= @intFromBool(relPath[relPath.len - 1] == '/');
 
         return buffer[0..newEnd];
     }
+    // TODO: starting with a slash is too intrusive, rework it
 
     /// Invalidates `end` of the path.
     ///
     /// `literalPath` must start with a slash.
     ///
-    /// Comptime asserts that `literalPath` does not end with a slash.
+    /// Comptime asserts that `literalPath` is not absolute and does not end with a slash.
     pub inline fn appendLiteral(self: *@This(), comptime literalPath: []const u8) []const u8 {
         const slash = if (OS == .windows) '\\' else '/';
         comptime assert(literalPath[0] == slash and literalPath[literalPath.len - 1] != slash);
