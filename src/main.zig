@@ -59,63 +59,64 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "add")) {
-            const rootName = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
-                Utils.exit(.InvalidArg);
-            };
-            const srcPath = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
-                Utils.exit(.InvalidArg);
-            };
-            const destPath = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
-                Utils.exit(.InvalidArg);
+            const addArgs: Cmd.AddArgs = .{
+                .root = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
+                .src = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
+                .dest = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
             };
 
             try Cmd.add(
                 io,
                 env,
                 &stdout,
-                rootName,
-                srcPath,
-                destPath,
+                addArgs,
             );
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "delete")) {
-            const rootName = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
-                Utils.exit(.InvalidArg);
+            const deleteArgs: Cmd.DeleteArgs = .{
+                .root = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
+                .file = args.next(),
             };
-
-            const rootFilePath = args.next();
 
             try Cmd.delete(
                 io,
                 env,
                 &stdin,
                 &stdout,
-                rootName,
-                rootFilePath,
+                deleteArgs,
             );
 
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "update")) {
-            const rootName = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
-                Utils.exit(.InvalidArg);
-            };
-
-            const srcPath = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
-                Utils.exit(.InvalidArg);
-            };
-            const destPath = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
-                Utils.exit(.InvalidArg);
+            const updateArgs: Cmd.UpdateArgs = .{
+                .rootName = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
+                .srcPath = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
+                .destPath = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
+                    Utils.exit(.InvalidArg);
+                },
             };
 
             try Cmd.update(
@@ -123,21 +124,24 @@ pub fn main(init: process.Init.Minimal) !void {
                 env,
                 &stdin,
                 &stdout,
-                rootName,
-                srcPath,
-                destPath,
+                updateArgs,
             );
 
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "create")) {
-            const rootName = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
-                Utils.exit(.InvalidArg);
-            };
-
-            try Cmd.create(io, env, &stdout, rootName);
+            try Cmd.create(
+                io,
+                env,
+                &stdout,
+                .{
+                    .root = args.next() orelse {
+                        try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                        Utils.exit(.InvalidArg);
+                    },
+                },
+            );
             Utils.exit(.Success);
         }
 

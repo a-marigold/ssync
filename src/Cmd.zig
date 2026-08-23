@@ -6,6 +6,9 @@
 //! Commands have error unions (e.g `AddError` for `add`)
 //! that contain mostly logical errors and have appropriate error messages.
 //! Errors, returned by commands, but not included in their error unions are implied as critical.
+//!
+//! Commands have `Args` and `Flags` structures.
+//! `Args` must be formed in order of the struct fields.
 
 const std = @import("std");
 const mem = std.mem;
@@ -205,12 +208,16 @@ const Create = struct {
         CreateRootFail,
         CreateRootsDirFail,
     } || CheckRootNameError;
+
+    const Args = struct { root: []const u8 };
+
     fn create(
         io: Io,
         env: Environ,
         stdout: *StdOut,
-        rootName: []const u8,
+        args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError)!void {
+        const rootName = args.root;
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
@@ -254,6 +261,7 @@ const Create = struct {
 };
 pub const create = Create.create;
 pub const CreateError = Create.Error;
+pub const CreateArgs = Create.Args;
 
 const Add = struct {
     const Error = error{
@@ -264,14 +272,23 @@ const Add = struct {
         DestAlreadyExist,
         CannotReplaceRoot,
     } || CheckRootNameError;
+
+    const Args = struct {
+        root: []const u8,
+        src: []const u8,
+        dest: []const u8,
+    };
+
     fn add(
         io: Io,
         env: Environ,
         stdout: *StdOut,
-        rootName: []const u8,
-        srcPath: []const u8,
-        destPath: []const u8,
+        args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError)!void {
+        const rootName = args.root;
+        const srcPath = args.src;
+        const destPath = args.dest;
+
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -296,7 +313,6 @@ const Add = struct {
             if (Utils.isPathAbs(srcPath)) {
                 break :block srcPath;
             }
-
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
             const absPathLen = cwd.realPathFile(
                 io,
@@ -325,6 +341,7 @@ const Add = struct {
 };
 pub const add = Add.add;
 pub const AddError = Add.Error;
+pub const AddArgs = Add.Args;
 
 const Delete = struct {
     const Error = error{
@@ -333,14 +350,22 @@ const Delete = struct {
         DeleteRootFail,
         DeleteFileFail,
     } || CheckRootNameError;
+
+    const Args = struct {
+        root: []const u8,
+        file: ?[]const u8,
+    };
+
     pub fn delete(
         io: Io,
         env: Environ,
         stdin: *StdIn,
         stdout: *StdOut,
-        rootName: []const u8,
-        rootFilePath: ?[]const u8,
+        args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError || DeleteDirWithConfirmError)!void {
+        const rootName = args.root;
+        const rootFilePath = args.file;
+
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -400,6 +425,7 @@ const Delete = struct {
 };
 pub const delete = Delete.delete;
 pub const DeleteError = Delete.Error;
+pub const DeleteArgs = Delete.Args;
 
 const Update = struct {
     const Error = error{
@@ -415,16 +441,24 @@ const Update = struct {
         SrcNotDir,
     } || CheckRootNameError;
 
+    const Args = struct {
+        root: []const u8,
+        src: []const u8,
+        dest: []const u8,
+    };
+
     /// Uses `stdin` only for confirmation of directories deletion.
     fn update(
         io: Io,
         env: Environ,
         stdin: *StdIn,
         stdout: *StdOut,
-        rootName: []const u8,
-        src: []const u8,
-        dest: []const u8,
+        args: Args,
     ) (Error || Utils.UserPathError)!void {
+        const rootName = args.root;
+        const srcPath = args.src;
+        const destPath = args.dest;
+
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootPath = block: {
@@ -436,7 +470,7 @@ const Update = struct {
                 unreachable; // `rootName` can't have path separators so `append` errors can't appear
         };
 
-        const destAbsPath = pathBuilder.append(dest) catch |err|
+        const destAbsPath = pathBuilder.append(destPath) catch |err|
             return switch (err) {
                 PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
                 else => unreachable, // TODO
@@ -445,14 +479,14 @@ const Update = struct {
         const cwd = Dir.cwd();
 
         const srcAbsPath = block: {
-            if (Utils.isPathAbs(src)) {
-                break :block src;
+            if (Utils.isPathAbs(srcPath)) {
+                break :block srcPath;
             }
 
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
             const absPathLen = cwd.realPathFile(
                 io,
-                src,
+                srcPath,
                 &buffer,
             ) catch return Error.GetSrcAbsPathFail;
             break :block buffer[0..absPathLen];
@@ -526,10 +560,11 @@ const Update = struct {
 };
 pub const update = Update.update;
 pub const UpdateError = Update.Error;
+pub const UpdateArgs = Update.Args;
 
-//
-// --- Cmd Utils ---
-//
+// ---------
+// Cmd Utils
+// ---------
 
 const DeleteDirWithConfirmError = error{
     DirNotFound,
