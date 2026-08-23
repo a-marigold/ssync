@@ -208,6 +208,38 @@ pub const PathBuilder = struct {
     }
 };
 
+/// Iterator over a path's components.
+pub const PathIterator = struct {
+    /// Does not always contain the full initial path.
+    ///
+    /// Instead, it starts with the last handled component.
+    path: []const u8,
+
+    pub inline fn init(path: []const u8) @This() {
+        return .{ .path = path };
+    }
+
+    /// Can return an empty slice if the path is absolute
+    /// (`/abc` does not contain anything before the first slash).
+    pub inline fn next(self: *@This()) ?[]const u8 {
+        const path = self.path;
+
+        const nextSlashIndex: usize = switch (OS) {
+            .windows => @min(
+                findStrScalar(path, '\\') orelse return null,
+                findStrScalar(path, '/') orelse return null,
+            ),
+            else => findStrScalar(
+                path,
+                '/',
+            ) orelse return null,
+        };
+
+        defer self.path = path[nextSlashIndex + 1 ..];
+        return path[0..nextSlashIndex];
+    }
+};
+
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
     return dir.createDir(io, path, Dir.Permissions.default_dir);
 }
