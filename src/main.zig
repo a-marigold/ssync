@@ -44,7 +44,7 @@ pub fn main(init: process.Init.Minimal) !void {
     if (args.next()) |cmd| {
         var stdin: StdIn = block: {
             // `stdin` is only used for y/n confirmation, so assume 1 byte is enough
-            var buffer: [1]u8 = undefined;
+            var buffer: [Cmd.STDIN_BUFFER_BYTES]u8 = undefined;
             break :block .init(io, &buffer);
         };
 

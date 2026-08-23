@@ -37,6 +37,8 @@ const PathIterator = Utils.PathIterator;
 pub const STDOUT_BUFFER_BYTES = Help.TEXT.len;
 /// `0` to make stderr unbufferred.
 pub const STDERR_BUFFER_BYTES = 0;
+/// It is used only for y/n confirmation, so assume 1 byte is enough.
+pub const STDIN_BUFFER_BYTES = 1;
 
 /// Relatively to user path.
 const ROOTS_DIR_PATH = switch (OS) {
@@ -354,6 +356,7 @@ const Delete = struct {
         dest: ?[]const u8,
     };
 
+    /// Uses `stdin` only for confirmation of directories deletion.
     pub fn delete(
         io: Io,
         env: Environ,
