@@ -55,7 +55,7 @@ pub inline fn getUserPath(
 }
 
 pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
-    return mem.findPosLinear(u8, str, 0, searchValue);
+    return mem.findScalarPos(u8, str, 0, searchValue);
 }
 
 /// `path` must have length at least 1.
@@ -94,11 +94,11 @@ pub const PathBuilder = struct {
     ///
     /// Returns a slice of the result in `buffer`.
     pub fn append(self: *@This(), relPath: []const u8) []const u8 {
-        const buffer = @constCast(self.buffer);
+        const buffer = @constCast(&self.buffer);
 
         assert(self.end + relPath.len < buffer.len);
 
-        var newEnd = 0;
+        var newEnd: usize = self.end;
         defer self.end = newEnd;
 
         buffer[newEnd] = '/';
@@ -113,24 +113,26 @@ pub const PathBuilder = struct {
 
         return buffer[0..newEnd];
     }
-    // TODO: starting with a slash is too intrusive, rework it
-
     /// Invalidates `end` of the path.
-    ///
-    /// `literalPath` must start with a slash.
     ///
     /// Comptime asserts that `literalPath` is not absolute and does not end with a slash.
     pub inline fn appendLiteral(self: *@This(), comptime literalPath: []const u8) []const u8 {
-        const slash = if (OS == .windows) '\\' else '/';
-        comptime assert(literalPath[0] == slash and literalPath[literalPath.len - 1] != slash);
+        comptime {
+            assert(literalPath[0] != '/' and literalPath[0] != '\\');
+
+            const lastChar = literalPath[literalPath - 1];
+            assert(lastChar != '/' and lastChar != '\\');
+        }
 
         const buffer = @constCast(&self.buffer);
 
         var newEnd = self.end;
         defer self.end = newEnd;
 
-        @memcpy(buffer[newEnd..][0..literalPath.len], literalPath);
-        newEnd += literalPath.len;
+        const resolvedLiteralPath = "/" ++ literalPath;
+
+        @memcpy(buffer[newEnd..][0..resolvedLiteralPath], resolvedLiteralPath);
+        newEnd += resolvedLiteralPath.len;
 
         return buffer[0..newEnd];
     }

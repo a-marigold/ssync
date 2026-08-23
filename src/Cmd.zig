@@ -42,16 +42,16 @@ pub const STDIN_BUFFER_BYTES = 1;
 
 /// Relatively to user path.
 const ROOTS_DIR_PATH = switch (OS) {
-    .linux => "/.local/share/ssync",
-    .macos => "/Library/Application Support/ssync",
-    .windows => "\\ssync",
+    .linux => ".local/share/ssync",
+    .macos => "Library/Application Support/ssync",
+    .windows => "ssync",
     else => unreachable,
 };
 /// Relatively to user path.
 const CONFIG_PATH = switch (OS) {
-    .linux => "/.config/ssync.toml",
-    .macos => "/Library/Application Support/ssync/ssync.toml",
-    .windows => "\\ssync\\ssync.toml",
+    .linux => ".config/ssync.toml",
+    .macos => "Library/Application Support/ssync/ssync.toml",
+    .windows => "ssync/ssync.toml",
     else => unreachable,
 };
 
@@ -59,7 +59,7 @@ pub const MAX_ROOT_NAME_BYTES = 100;
 
 /// Messages of all CLI logical errors.
 ///
-/// Messages don't end with line break.
+/// Messages don't end with a line break.
 pub const Errors = struct {
     const PREFIX = "error: ";
 
@@ -435,7 +435,7 @@ const Update = struct {
 
         /// When a whole root is being updated
         SrcNotDir,
-    } || CheckRootNameError;
+    } || CheckRootNameError || CheckRootDestError;
 
     const Args = struct {
         root: []const u8,
@@ -667,9 +667,9 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
     // Instead, it counts components of the resolved `destPath`.
     // If quantity of components is negative, `destPath` escapes the root
 
-    const destPathIterator: PathIterator = .init(destPath);
+    var destPathIterator: PathIterator = .init(destPath);
 
-    var componentsCount = 0;
+    var componentsCount: i32 = 0;
 
     while (destPathIterator.next()) |component| switch (component.len) {
         1 => componentsCount += @intFromBool(component[0] != '.'),
