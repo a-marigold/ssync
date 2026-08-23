@@ -638,10 +638,16 @@ fn checkRootName(name: []const u8) CheckRootNameError!void {
     }
 
     switch (OS) {
-        .windows => if (mem.find(u8, name, "/") != null or mem.find(u8, name, "\\") != null) {
+        .windows => if (Utils.findStrScalar(
+            name,
+            '/',
+        ) != null or Utils.findStrScalar(
+            name,
+            '\\',
+        ) != null) {
             return CheckRootNameError.RootNameHasSlash;
         },
-        else => if (mem.find(u8, name, "/") != null) {
+        else => if (Utils.findStrScalar(name, '/') != null) {
             return CheckRootNameError.RootNameHasSlash;
         },
     }

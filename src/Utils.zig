@@ -71,6 +71,10 @@ pub inline fn insertStr(
     return buffer[0..newLen];
 }
 
+pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
+    return mem.findPosLinear(u8, str, 0, searchValue);
+}
+
 /// `path` must have length at least 1.
 pub fn isPathAbs(path: []const u8) bool {
     return switch (OS) {
@@ -116,27 +120,27 @@ pub const PathBuilder = struct {
     /// `relPath` must have length at least 1.
     ///
     /// Returns a slice of the new path.
-    pub fn append(path: *@This(), relPath: []const u8) AppendError![]const u8 {
+    pub fn append(self: *@This(), relPath: []const u8) AppendError![]const u8 {
         const slash = if (OS == .windows) '\\' else '/';
 
-        const buffer = @constCast(&path.buffer);
+        const buffer = @constCast(&self.buffer);
 
         if (relPath[0] == '.') {
             if (relPath.len == 1) {
-                return buffer[0..path.end];
+                return buffer[0..self.end];
             }
 
             const secondChar = relPath[1];
 
             switch (secondChar) {
                 '/' => if (relPath.len == 2) {
-                    return buffer[0..path.end];
+                    return buffer[0..self.end];
                 } else {
                     @branchHint(.likely);
 
                     // Reuse the slash
-                    var newEnd = path.end;
-                    defer path.end = newEnd;
+                    var newEnd = self.end;
+                    defer self.end = newEnd;
 
                     const normalRelPath = relPath[1..];
 
@@ -154,8 +158,8 @@ pub const PathBuilder = struct {
                 },
 
                 else => {
-                    var newEnd = path.end;
-                    defer path.end = newEnd;
+                    var newEnd = self.end;
+                    defer self.end = newEnd;
 
                     buffer[newEnd] = slash;
                     newEnd += 1;
@@ -171,8 +175,8 @@ pub const PathBuilder = struct {
             return AppendError.RelativePathAbsolute;
         }
 
-        var newEnd = path.end;
-        defer path.end = newEnd;
+        var newEnd = self.end;
+        defer self.end = newEnd;
 
         buffer[newEnd] = slash;
         newEnd += 1;
@@ -188,14 +192,14 @@ pub const PathBuilder = struct {
     /// `literalPath` must start with a slash.
     ///
     /// Comptime asserts that `literalPath` does not end with a slash.
-    pub inline fn appendLiteral(path: *@This(), comptime literalPath: []const u8) []const u8 {
+    pub inline fn appendLiteral(self: *@This(), comptime literalPath: []const u8) []const u8 {
         const slash = if (OS == .windows) '\\' else '/';
         comptime assert(literalPath[0] == slash and literalPath[literalPath.len - 1] != slash);
 
-        const buffer = @constCast(&path.buffer);
+        const buffer = @constCast(&self.buffer);
 
-        var newEnd = path.end;
-        defer path.end = newEnd;
+        var newEnd = self.end;
+        defer self.end = newEnd;
 
         @memcpy(buffer[newEnd..][0..literalPath.len], literalPath);
         newEnd += literalPath.len;
@@ -212,6 +216,7 @@ pub const SymLinkError = switch (OS) {
     .windows => Dir.SymLinkError | Dir.StatError,
     else => Dir.SymLinkError,
 };
+
 /// On windows, stats `targetPath` to find out is it a dir and passes appropriate flag to `dir.symLink` function.
 ///
 /// On other platforms just creates symlink 'cause the mentioned flag does not matters there.
