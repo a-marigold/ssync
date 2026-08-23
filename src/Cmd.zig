@@ -224,8 +224,10 @@ const Create = struct {
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-        try checkRootName(rootName);
-        const rootPath = pathBuilder.append(rootName);
+        const rootPath = block: {
+            try checkRootName(rootName);
+            break :block pathBuilder.append(rootName);
+        };
 
         const cwd = Dir.cwd();
 
@@ -271,7 +273,7 @@ const Add = struct {
         SymLinkFail,
         DestAlreadyExist,
         CannotReplaceRoot,
-    } || CheckRootNameError;
+    } || CheckRootNameError || CheckRootDestError;
 
     const Args = struct {
         root: []const u8,
@@ -303,7 +305,6 @@ const Add = struct {
 
         const destAbsPath = block: {
             try checkRootDest(destPath);
-
             break :block pathBuilder.append(destPath);
         };
 
@@ -330,7 +331,6 @@ const Add = struct {
             srcAbsPath,
             destAbsPath,
         ) catch return Error.SymLinkFail;
-
         // TODO: create dirs step-by-step
 
         try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
@@ -347,7 +347,7 @@ const Delete = struct {
         StatFileFail,
         DeleteRootFail,
         DeleteFileFail,
-    } || CheckRootNameError;
+    } || CheckRootNameError || CheckRootDestError;
 
     const Args = struct {
         root: []const u8,
@@ -362,7 +362,7 @@ const Delete = struct {
         args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError || DeleteDirWithConfirmError)!void {
         const rootName = args.root;
-        const rootFilePath = args.dest;
+        const destPath = args.dest;
 
         var pathBuilder = try initUserPathBuilder(env);
 
@@ -376,7 +376,7 @@ const Delete = struct {
 
         const cwd = Dir.cwd();
 
-        if (rootFilePath == null) {
+        if (destPath == null) {
             return deleteDirWithConfirm(
                 io,
                 stdin,
@@ -389,24 +389,25 @@ const Delete = struct {
             };
         }
 
-        const filePath = rootFilePath.?;
-
-        const fileAbsPath = pathBuilder.append(filePath);
+        const destAbsPath = block: {
+            try checkRootDest(destPath.?);
+            break :block pathBuilder.append(destPath.?);
+        };
 
         const fileKind = (cwd.statFile(
             io,
-            fileAbsPath,
+            destAbsPath,
             .{ .follow_symlinks = true },
         ) catch return Error.StatFileFail).kind;
 
         return switch (fileKind) {
-            .file => cwd.deleteFile(io, fileAbsPath) catch Error.DeleteFileFail,
+            .file => cwd.deleteFile(io, destAbsPath) catch Error.DeleteFileFail,
             .directory => deleteDirWithConfirm(
                 io,
                 stdin,
                 stdout,
-                fileAbsPath,
-                .{ "'", fileAbsPath, "' is a non-empty dir. Delete it [y/n]? " },
+                destAbsPath,
+                .{ "'", destAbsPath, "' is a non-empty dir. Delete it [y/n]? " },
             ) catch |err| switch (err) {
                 DeleteDirWithConfirmError.DeleteFail => Error.DeleteFileFail,
                 else => err,
@@ -461,7 +462,10 @@ const Update = struct {
             break :block pathBuilder.append(rootName);
         };
 
-        const destAbsPath = pathBuilder.append(destPath);
+        const destAbsPath = block: {
+            try checkRootDest(destPath);
+            break :block pathBuilder.append(destPath);
+        };
 
         const cwd = Dir.cwd();
 
@@ -609,7 +613,6 @@ inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
         &pathBuilder.buffer,
     )).len;
     pathBuilder.end = userPathLen;
-
     return pathBuilder;
 }
 
@@ -681,5 +684,3 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
 }
 
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
-
-// TODO: 'args' and 'flags' structs for commands
