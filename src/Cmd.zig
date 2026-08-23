@@ -32,6 +32,7 @@ const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 
 const PathBuilder = Utils.PathBuilder;
+const PathIterator = Utils.PathIterator;
 
 /// Relatively to user path.
 const ROOTS_DIR_PATH = switch (OS) {
@@ -653,5 +654,46 @@ fn checkRootName(name: []const u8) CheckRootNameError!void {
     }
 }
 
+const CheckRootDestError = error{
+    DestPathAbsolute,
+    DestPathEscapesRoot,
+};
+/// Returns an error if `destPath` is absolute or it escapes the root.
+///
+/// Example of escaping: `/path/to/root` and `./dest/../../` -
+/// the resolved dest is `/path/to`.
+///
+/// After calling this function, path to the root and `destPath` can be safely joined.
+fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
+    if (Utils.isPathAbs(destPath)) {
+        @branchHint(.unlikely);
+
+        return CheckRootDestError.DestPathAbsolute;
+    }
+
+    // This logic does not resolve and build a new path at all.
+    // Instead, it counts components of the resolved `destPath`.
+    // If quantity of components is negative, `destPath` escapes the root
+
+    const destPathIterator: PathIterator = .init(destPath);
+
+    var componentsCount = 0;
+
+    while (destPathIterator.next()) |component| switch (component.len) {
+        1 => componentsCount += @intFromBool(component[0] != '.'),
+        2 => {
+            const isParentDir = component[0] == '.' and component[1] == '.';
+            componentsCount -= @intFromBool(isParentDir);
+            componentsCount += @intFromBool(!isParentDir);
+        },
+        else => componentsCount += 1,
+    };
+
+    if (componentsCount < 0) {
+        return CheckRootDestError.DestPathEscapesRoot;
+    }
+}
+
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
+
 // TODO: 'args' and 'flags' structs for commands
