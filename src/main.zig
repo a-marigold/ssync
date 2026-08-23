@@ -89,7 +89,7 @@ pub fn main(init: process.Init.Minimal) !void {
                     try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
                     Utils.exit(.InvalidArg);
                 },
-                .file = args.next(),
+                .dest = args.next(),
             };
 
             try Cmd.delete(
@@ -105,15 +105,15 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "update")) {
             const updateArgs: Cmd.UpdateArgs = .{
-                .rootName = args.next() orelse {
+                .root = args.next() orelse {
                     try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
                     Utils.exit(.InvalidArg);
                 },
-                .srcPath = args.next() orelse {
+                .newSrc = args.next() orelse {
                     try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
                     Utils.exit(.InvalidArg);
                 },
-                .destPath = args.next() orelse {
+                .dest = args.next() orelse {
                     try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
                     Utils.exit(.InvalidArg);
                 },

@@ -30,9 +30,13 @@ const MAX_PATH_BYTES = Dir.max_path_bytes;
 
 const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
-
 const PathBuilder = Utils.PathBuilder;
 const PathIterator = Utils.PathIterator;
+
+/// The desired amount of bytes of stdout buffer that fits every command.
+pub const STDOUT_BUFFER_BYTES = Help.TEXT.len;
+/// `0` to make stderr unbufferred.
+pub const STDERR_BUFFER_BYTES = 0;
 
 /// Relatively to user path.
 const ROOTS_DIR_PATH = switch (OS) {
@@ -41,7 +45,6 @@ const ROOTS_DIR_PATH = switch (OS) {
     .windows => "\\ssync",
     else => unreachable,
 };
-
 /// Relatively to user path.
 const CONFIG_PATH = switch (OS) {
     .linux => "/.config/ssync.toml",
@@ -51,11 +54,6 @@ const CONFIG_PATH = switch (OS) {
 };
 
 pub const MAX_ROOT_NAME_BYTES = 100;
-
-/// The desired amount of bytes of stdout buffer that fits every command.
-pub const STDOUT_BUFFER_BYTES = Help.TEXT.len;
-/// `0` to make stderr unbufferred.
-pub const STDERR_BUFFER_BYTES = 0;
 
 /// Messages of all CLI logical errors.
 ///
@@ -84,10 +82,12 @@ const Help = struct {
         \\                               'src' is path to a file in the system which is to be copied to 'dest'.
         \\                               'dest' is a path relative to 'root' to copy 'src' to.
         \\
-        \\  delete [root, ?file]         If 'file' specified, delete the 'file' in 'root'.
+        \\  delete [root, ?dest]         If 'dest' specified, delete the file at 'dest' path in 'root'.
         \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
         \\
         \\  update [root, newSrc, dest]  Make 'dest' in 'root' track 'newSrc' instead of the current.
+        \\                               If 'dest' is like './', replaces the whole root with 'newSrc' 
+        \\                               ('newSrc' must be a folder and prompt is shown for safety).
         \\
         \\Terms:
         \\  root  Synchronization root, root folder of data with a similar domain.
@@ -202,6 +202,7 @@ const Config = struct {
     }
 };
 pub const config = Config.config;
+pub const ConfigError = Config.Error;
 
 const Create = struct {
     const Error = error{
@@ -224,9 +225,7 @@ const Create = struct {
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
         try checkRootName(rootName);
-        const rootPath = pathBuilder.append(
-            rootName,
-        ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
+        const rootPath = pathBuilder.append(rootName);
 
         const cwd = Dir.cwd();
 
@@ -297,18 +296,16 @@ const Add = struct {
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block pathBuilder.append(
-                rootName,
-            ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
+            break :block pathBuilder.append(rootName);
         };
 
         const cwd = Dir.cwd();
 
-        const destAbsPath = pathBuilder.append(destPath) catch |err|
-            return switch (err) {
-                PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
-                else => unreachable, // TODO
-            };
+        const destAbsPath = block: {
+            try checkRootDest(destPath);
+
+            break :block pathBuilder.append(destPath);
+        };
 
         const srcAbsPath = block: {
             if (Utils.isPathAbs(srcPath)) {
@@ -354,7 +351,7 @@ const Delete = struct {
 
     const Args = struct {
         root: []const u8,
-        file: ?[]const u8,
+        dest: ?[]const u8,
     };
 
     pub fn delete(
@@ -365,7 +362,7 @@ const Delete = struct {
         args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError || DeleteDirWithConfirmError)!void {
         const rootName = args.root;
-        const rootFilePath = args.file;
+        const rootFilePath = args.dest;
 
         var pathBuilder = try initUserPathBuilder(env);
 
@@ -374,9 +371,7 @@ const Delete = struct {
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block pathBuilder.append(
-                rootName,
-            ) catch unreachable; // `rootName` can't have path separators so `append` errors can't appear
+            break :block pathBuilder.append(rootName);
         };
 
         const cwd = Dir.cwd();
@@ -396,11 +391,7 @@ const Delete = struct {
 
         const filePath = rootFilePath.?;
 
-        const fileAbsPath = pathBuilder.append(filePath) catch |err|
-            return switch (err) {
-                PathBuilder.AppendError.RelativePathAbsolute => Error.FilePathAbsolute,
-                else => unreachable, // TODO
-            };
+        const fileAbsPath = pathBuilder.append(filePath);
 
         const fileKind = (cwd.statFile(
             io,
@@ -444,7 +435,7 @@ const Update = struct {
 
     const Args = struct {
         root: []const u8,
-        src: []const u8,
+        newSrc: []const u8,
         dest: []const u8,
     };
 
@@ -457,7 +448,7 @@ const Update = struct {
         args: Args,
     ) (Error || Utils.UserPathError)!void {
         const rootName = args.root;
-        const srcPath = args.src;
+        const srcPath = args.newSrc;
         const destPath = args.dest;
 
         var pathBuilder = try initUserPathBuilder(env);
@@ -467,15 +458,10 @@ const Update = struct {
 
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
-            break :block pathBuilder.append(rootName) catch
-                unreachable; // `rootName` can't have path separators so `append` errors can't appear
+            break :block pathBuilder.append(rootName);
         };
 
-        const destAbsPath = pathBuilder.append(destPath) catch |err|
-            return switch (err) {
-                PathBuilder.AppendError.RelativePathAbsolute => Error.DestPathAbsolute,
-                else => unreachable, // TODO
-            };
+        const destAbsPath = pathBuilder.append(destPath);
 
         const cwd = Dir.cwd();
 
@@ -614,7 +600,6 @@ fn deleteDirWithConfirm(
 }
 
 /// Initializes `PathBuilder` with copying the user path there.
-///
 /// `result.buffer[0..result.end]` contains the user path.
 inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
     var pathBuilder: PathBuilder = .init();
@@ -658,12 +643,13 @@ const CheckRootDestError = error{
     DestPathAbsolute,
     DestPathEscapesRoot,
 };
-/// Returns an error if `destPath` is absolute or it escapes the root.
-///
-/// Example of escaping: `/path/to/root` and `./dest/../../` -
-/// the resolved dest is `/path/to`.
+/// Checks validity of `destPath` that is relative to a root.
 ///
 /// After calling this function, path to the root and `destPath` can be safely joined.
+///
+/// Returns an error if `destPath` is absolute or it escapes the root.
+///
+/// Example of escaping: `/path/to/root` and `./dest/../../` - the resolved dest is `/path/to`.
 fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
     if (Utils.isPathAbs(destPath)) {
         @branchHint(.unlikely);
