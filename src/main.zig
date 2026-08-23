@@ -89,11 +89,7 @@ pub fn main(init: process.Init.Minimal) !void {
                 Utils.exit(.InvalidArg);
             };
 
-            const rootFilePath = args.next() orelse {
-                try stderr.write(.{Errors.ARG_EXPECTED("file") ++ "\n"});
-                Utils.exit(.InvalidArg);
-            };
-            // TODO: fix the thing above
+            const rootFilePath = args.next();
 
             try Cmd.delete(
                 io,
@@ -117,7 +113,6 @@ pub fn main(init: process.Init.Minimal) !void {
                 try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
                 Utils.exit(.InvalidArg);
             };
-
             const destPath = args.next() orelse {
                 try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
                 Utils.exit(.InvalidArg);
