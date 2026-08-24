@@ -21,12 +21,7 @@ pub fn build(b: *std.Build) void {
             .omit_frame_pointer = isRelease,
             .unwind_tables = if (isRelease) .none else null,
         }),
-        // Exactly it allows emitting asm for some reason
-        .use_llvm = true,
     });
-
-    const asmStep = b.step("asm", "Emit asm");
-    asmStep.dependOn(&b.addInstallBinFile(exe.getEmittedAsm(), "ssync.s").step);
 
     const checkStep = b.step("check", "Check without emiting binary");
     checkStep.dependOn(&exe.step);
