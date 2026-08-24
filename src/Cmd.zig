@@ -61,16 +61,67 @@ pub const MAX_ROOT_NAME_BYTES = 100;
 ///
 /// Messages don't end with a line break.
 pub const Errors = struct {
+    /// If `err` is a logical error that have an appropriate message, returns the message.
+    ///
+    /// Otherwise, returns `err` 'cause it is critical.
+    pub inline fn getErrMsg(err: anyerror, comptime cmd: enum { Config, Create, Add, Delete, Update }) ![]const u8 {
+        return switch (err) {
+            CheckRootDestError.DestPathAbsolute => Errors.ROOT_DEST_PATH_ABSOLUTE,
+            CheckRootDestError.DestPathEscapesRoot => Errors.ROOT_DEST_PATH_ESCAPES,
+            CheckRootNameError.RootNameTooLong => Errors.ROOT_NAME_TOO_LONG,
+            CheckRootNameError.RootNameHasSlash => Errors.ROOT_NAME_HAS_SLASH,
+            else => switch (cmd) {
+                .Add => switch (err) {
+                    AddError.CannotReplaceRoot => Errors.CANNOT_REPLACE_ROOT,
+                    AddError.DestAlreadyExist => Errors.ROOT_DEST_ALREADY_EXIST,
+                    AddError.DestComponentNotDir => Errors.DEST_COMPONENT_NOT_DIR,
+                    AddError.DestPathAbsolute => Errors.ROOT_DEST_PATH_ABSOLUTE,
+                    AddError.DestPathEscapesRoot => Errors.ROOT_DEST_PATH_ESCAPES,
+                    AddError.GetSrcAbsPathFail => Errors.GET_SRC_ABS_PATH_FAIL,
+                    AddError.RootNameHasSlash => Errors.ROOT_NAME_HAS_SLASH,
+                    else => err,
+                },
+                .Delete => switch (err) {
+                    DeleteError.DestNotExist => Errors.ROOT_DEST_NOT_EXIST,
+                    DeleteError.DeleteDestFail => Errors.DELETE_ROOT_DEST_FAIL,
+                    DeleteError.DeleteRootFail => Errors.DELETE_ROOT_FAIL,
+                    else => err,
+                },
+                .Update => switch (err) {
+                    UpdateError.SymLinkFail => Errors.SYM_LINK_FAIL,
+                    UpdateError.ReplaceRootFail => Errors.REPLACE_ROOT_FAIL,
+                    UpdateError.SrcNotDir => Errors.SRC_NOT_DIR,
+                    UpdateError.GetSrcAbsPathFail => Errors.GET_SRC_ABS_PATH_FAIL,
+                    else => err,
+                },
+                .Config => switch (err) {
+                    ConfigError.WriteConfigFail => Errors.WRITE_CONFIG_FAIL,
+                    ConfigError.StatConfigFail => Errors.STAT_CONFIG_FAIL,
+                    else => err,
+                },
+                .Create => switch (err) {
+                    CreateError.RootAlreadyExist => Errors.ROOT_ALREADY_EXIST,
+                    CreateError.CreateRootFail => Errors.CREATE_ROOT_FAIL,
+                    CreateError.CreateRootsDirFail => Errors.CREATE_ROOTS_DIR_FAIL,
+                    else => err,
+                },
+            },
+        };
+    }
+
     const PREFIX = "error: ";
 
     // General
     pub inline fn ARG_EXPECTED(comptime argName: []const u8) []const u8 {
         return PREFIX ++ "'" ++ argName ++ "' arg expected";
     }
+
     pub const ROOT_NAME_TOO_LONG = PREFIX ++ "The root name is too long";
     pub const ROOT_NAME_HAS_SLASH = PREFIX ++ "Root names cannot have slashes";
+
     pub const ROOT_DEST_PATH_ABSOLUTE = PREFIX ++ "Root dest path cannot be absolute";
     pub const ROOT_DEST_PATH_ESCAPES = PREFIX ++ "'dest' path points out the root";
+
     pub const SYM_LINK_FAIL = PREFIX ++ "Failed to symlink";
     pub const ROOT_NOT_EXIST = PREFIX ++ "The root doesn't exist";
     pub const GET_SRC_ABS_PATH_FAIL = PREFIX ++ "Failed to get absolute path of 'src'";
@@ -83,7 +134,7 @@ pub const Errors = struct {
     pub const CREATE_ROOT_FAIL = PREFIX ++ "Failed to create root";
     pub const ROOT_ALREADY_EXIST = PREFIX ++ "The root already exists";
 
-    pub const DEST_ALREADY_EXIST = PREFIX ++ "'dest' path already exists";
+    pub const ROOT_DEST_ALREADY_EXIST = PREFIX ++ "'dest' path already exists";
     pub const CANNOT_REPLACE_ROOT = PREFIX ++ "'dest' points to the root. Cannot replace root";
     pub const DEST_COMPONENT_NOT_DIR = PREFIX ++ "Path component of 'dest' is not a dir";
 
@@ -113,7 +164,7 @@ const Help = struct {
         \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
         \\
         \\  update [root, newSrc, dest]  Make 'dest' in 'root' track 'newSrc' instead of the current.
-        \\                               If 'dest' is like './', replaces the whole root with 'newSrc' 
+        \\                               If 'dest' is like './', replaces the whole root with 'newSrc'
         \\                               ('newSrc' must be a folder and prompt is shown for safety).
         \\
         \\Terms:
@@ -205,7 +256,7 @@ const Config = struct {
     inline fn createConfig(io: Io, configPath: []const u8) CreateConfigError!void {
         const cwd = Dir.cwd();
 
-        // Happy path is when config exists, Sad path is when does not
+        // Happy path is when config exists, Sad is when does not
         _ = cwd.statFile(
             io,
             configPath,
@@ -357,7 +408,7 @@ const Add = struct {
                     .{ .follow_symlinks = false },
                 ) catch return Error.RootNotExist;
 
-                // Use it instead of `destPath` to ensure there is not a trailing slash
+                // Use it instead of `destPath` to ensure there isn't a trailing slash
                 const resolvedDestPath = destAbsPath[rootPath.len + 1 ..]; // `+ 1` for slash
 
                 var destPathIterator: PathIterator = .init(resolvedDestPath);
