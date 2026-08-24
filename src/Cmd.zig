@@ -178,7 +178,7 @@ const Help = struct {
     ///
     /// Errors returned by this function are only critical.
     fn help(stdout: *StdOut) !void {
-        try stdout.write(.{TEXT});
+        try stdout.write(TEXT);
         try stdout.flush();
     }
 };
@@ -201,7 +201,7 @@ const List = struct {
                 .{ .iterate = true, .follow_symlinks = true },
             ) catch |err| switch (err) {
                 Dir.OpenError.FileNotFound => {
-                    try stdout.write(.{noRootCreatedMsg});
+                    try stdout.write(noRootCreatedMsg);
                     return stdout.flush();
                 },
                 else => return err,
@@ -212,11 +212,11 @@ const List = struct {
         };
 
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
-            try stdout.write(.{noRootCreatedMsg});
+            try stdout.write(noRootCreatedMsg);
             return stdout.flush();
         };
 
-        try stdout.write(.{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" });
+        try stdout.writeVec(.{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" });
 
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
@@ -225,7 +225,7 @@ const List = struct {
                 if (entry.kind != .directory) continue;
             }
 
-            try stdout.write(.{ "  ", entry.name, "\n" });
+            try stdout.writeVec(.{ "  ", entry.name, "\n" });
         }
 
         return stdout.flush();
@@ -246,7 +246,7 @@ const Config = struct {
 
         try createConfig(io, configPath);
 
-        try stdout.write(.{configPath});
+        try stdout.write(configPath);
         try stdout.writeByte('\n');
         return stdout.flush();
     }
@@ -328,7 +328,7 @@ const Create = struct {
             }
         };
 
-        try stdout.write(.{"Root was successfully created\n"});
+        try stdout.write("Root was successfully created\n");
         return stdout.flush();
     }
 };
@@ -426,10 +426,9 @@ const Add = struct {
                             destAbsPath,
                         ) catch return Error.SymLinkFail;
 
-                        try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
+                        try stdout.writeVec(.{ "Successfully added ", srcPath, " to the dest in root" });
                         return stdout.flush();
                     }
-
                     Utils.createDir(io, cwd, currentAbsPath) catch |dirErr| switch (dirErr) {
                         Dir.CreateDirError.PathAlreadyExists => continue,
                         Dir.CreateDirError.NotDir => return Error.DestComponentNotDir,
@@ -440,7 +439,7 @@ const Add = struct {
             else => return Error.SymLinkFail,
         };
 
-        try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
+        try stdout.writeVec(.{ "Successfully added ", srcPath, " to the dest in root" });
         return stdout.flush();
     }
 };

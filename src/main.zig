@@ -61,68 +61,68 @@ pub fn main(init: process.Init.Minimal) !void {
         if (eqlCmd(cmd, "add")) {
             const addArgs: Cmd.AddArgs = .{
                 .root = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
                 .src = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("src") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
                 .dest = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("dest") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
             };
 
             Cmd.add(io, env, &stdout, addArgs) catch |err|
-                return stderr.write(.{try Errors.getMsgFromError(err, .Add)});
+                return stderr.write(try Errors.getErrMsg(err, .Add));
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "delete")) {
             const deleteArgs: Cmd.DeleteArgs = .{
                 .root = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
                 .dest = args.next(),
             };
 
             Cmd.delete(io, env, &stdin, &stdout, deleteArgs) catch |err|
-                return stderr.write(.{try Errors.getMsgFromError(err, .Delete)});
+                return stderr.write(try Errors.getErrMsg(err, .Delete));
             Utils.exit(.Success);
         }
 
         if (eqlCmd(cmd, "update")) {
             const updateArgs: Cmd.UpdateArgs = .{
                 .root = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
                 .newSrc = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("src") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("src") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
                 .dest = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("dest") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("dest") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
             };
 
             Cmd.update(io, env, &stdin, &stdout, updateArgs) catch |err|
-                return stderr.write(.{try Errors.getMsgFromError(err, .Update)});
+                return stderr.write(try Errors.getErrMsg(err, .Update));
             Utils.exit(.Success);
         }
         if (eqlCmd(cmd, "create")) {
             const createArgs: Cmd.CreateArgs = .{
                 .root = args.next() orelse {
-                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
                     Utils.exit(.InvalidArg);
                 },
             };
 
             Cmd.create(io, env, &stdout, createArgs) catch |err|
-                return stderr.write(.{try Errors.getMsgFromError(err, .Create)});
+                return stderr.write(try Errors.getErrMsg(err, .Create));
             Utils.exit(.Success);
         }
 
@@ -133,7 +133,7 @@ pub fn main(init: process.Init.Minimal) !void {
 
         if (eqlCmd(cmd, "config")) {
             Cmd.config(io, env, &stdout) catch |err|
-                return stderr.write(.{try Errors.getMsgFromError(err, .Config)});
+                return stderr.write(try Errors.getErrMsg(err, .Config));
             Utils.exit(.Success);
         }
     }

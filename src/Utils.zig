@@ -243,16 +243,20 @@ pub const StdOut = struct {
 
     pub const WriteError = Io.Writer.Error;
 
-    /// Writes every slice of `data` to the buffer of `init` function
-    /// and outputs it if the buffer ends.
-    ///
-    /// `data` is an array (with comptime known length) of slices.
-    pub inline fn write(self: *@This(), data: anytype) WriteError!void {
+    pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
         const writer: *Io.Writer = @constCast(&self.writer.interface);
 
-        inline for (data) |slice| {
-            try writer.writeAll(slice);
-        }
+        return writer.writeAll(data);
+    }
+
+    /// Writes every slice of `vec` to the buffer of `init` function
+    /// and outputs it if the buffer ends.
+    ///
+    /// `vec` is an array (with comptime known length) of slices.
+    pub inline fn writeVec(self: *@This(), vec: anytype) WriteError!void {
+        const writer: *Io.Writer = @constCast(&self.writer.interface);
+
+        inline for (vec) |slice| try writer.writeAll(slice);
     }
 
     pub inline fn writeByte(self: *@This(), byte: u8) WriteError!void {
@@ -274,10 +278,10 @@ pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 pub inline fn confirm(
     stdin: *StdIn,
     stdout: *StdOut,
-    /// An array of slices (`StdOut.write` recevies data like that).
+    /// An array of slices to be passed to `StdOut.writeVec`.
     query: anytype,
 ) ConfirmError!bool {
-    stdout.write(query) catch return ConfirmError.WriteFail;
+    stdout.writeVec(query) catch return ConfirmError.WriteFail;
 
     const input = stdin.readByte() catch return ConfirmError.ReadFail;
 
