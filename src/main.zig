@@ -27,7 +27,7 @@ pub fn main(init: process.Init.Minimal) !void {
         break :block .init(io, .StdErr, &buffer);
     };
 
-    var args = switch (comptime OS) {
+    var args = switch (OS) {
         .linux, .macos => init.args.iterate(),
         .windows => block: {
             // Initialize allocator only for windows
@@ -74,12 +74,8 @@ pub fn main(init: process.Init.Minimal) !void {
                 },
             };
 
-            try Cmd.add(
-                io,
-                env,
-                &stdout,
-                addArgs,
-            );
+            Cmd.add(io, env, &stdout, addArgs) catch |err|
+                return stderr.write(.{try Errors.getMsgFromError(err, .Add)});
             Utils.exit(.Success);
         }
 
@@ -92,14 +88,8 @@ pub fn main(init: process.Init.Minimal) !void {
                 .dest = args.next(),
             };
 
-            try Cmd.delete(
-                io,
-                env,
-                &stdin,
-                &stdout,
-                deleteArgs,
-            );
-
+            Cmd.delete(io, env, &stdin, &stdout, deleteArgs) catch |err|
+                return stderr.write(.{try Errors.getMsgFromError(err, .Delete)});
             Utils.exit(.Success);
         }
 
@@ -119,29 +109,20 @@ pub fn main(init: process.Init.Minimal) !void {
                 },
             };
 
-            try Cmd.update(
-                io,
-                env,
-                &stdin,
-                &stdout,
-                updateArgs,
-            );
-
+            Cmd.update(io, env, &stdin, &stdout, updateArgs) catch |err|
+                return stderr.write(.{try Errors.getMsgFromError(err, .Update)});
             Utils.exit(.Success);
         }
-
         if (eqlCmd(cmd, "create")) {
-            try Cmd.create(
-                io,
-                env,
-                &stdout,
-                .{
-                    .root = args.next() orelse {
-                        try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
-                        Utils.exit(.InvalidArg);
-                    },
+            const createArgs: Cmd.CreateArgs = .{
+                .root = args.next() orelse {
+                    try stderr.write(.{Errors.ARG_EXPECTED("root") ++ "\n"});
+                    Utils.exit(.InvalidArg);
                 },
-            );
+            };
+
+            Cmd.create(io, env, &stdout, createArgs) catch |err|
+                return stderr.write(.{try Errors.getMsgFromError(err, .Create)});
             Utils.exit(.Success);
         }
 
@@ -151,7 +132,8 @@ pub fn main(init: process.Init.Minimal) !void {
         }
 
         if (eqlCmd(cmd, "config")) {
-            try Cmd.config(io, env, &stdout);
+            Cmd.config(io, env, &stdout) catch |err|
+                return stderr.write(.{try Errors.getMsgFromError(err, .Config)});
             Utils.exit(.Success);
         }
     }
