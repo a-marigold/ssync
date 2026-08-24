@@ -151,9 +151,11 @@ const List = struct {
 
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
-            // are located in one dir, so check is it a dir (that is root)
-            if ((comptime OS != .linux) and entry.kind != .directory) {
-                continue;
+            // are located in one dir, so check is it a dir (that is a root)
+            if (OS != .linux) {
+                if (entry.kind != .directory) {
+                    continue;
+                }
             }
 
             try stdout.write(.{ "  ", entry.name, "\n" });
@@ -222,6 +224,7 @@ const Create = struct {
         args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError)!void {
         const rootName = args.root;
+
         var pathBuilder = try initUserPathBuilder(env);
 
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
@@ -275,6 +278,8 @@ const Add = struct {
         SymLinkFail,
         DestAlreadyExist,
         CannotReplaceRoot,
+        RootNotExist,
+        DestComponentNotDir,
     } || CheckRootNameError || CheckRootDestError;
 
     const Args = struct {
@@ -307,6 +312,7 @@ const Add = struct {
 
         const destAbsPath = block: {
             try checkRootDest(destPath);
+
             break :block pathBuilder.append(destPath);
         };
 
@@ -314,29 +320,67 @@ const Add = struct {
             if (Utils.isPathAbs(srcPath)) {
                 break :block srcPath;
             }
+
             var buffer: [MAX_PATH_BYTES]u8 = undefined;
             const absPathLen = cwd.realPathFile(
                 io,
                 srcPath,
                 &buffer,
             ) catch return Error.GetSrcAbsPathFail;
+
             break :block buffer[0..absPathLen];
         };
 
-        if (destAbsPath.len == rootPath.len) {
-            return Error.CannotReplaceRoot;
-        }
+        if (destAbsPath.len == rootPath.len) return Error.CannotReplaceRoot;
 
         Utils.symLink(
             io,
             cwd,
             srcAbsPath,
             destAbsPath,
-        ) catch return Error.SymLinkFail;
-        // TODO: create dirs step-by-step
+        ) catch |err| switch (err) {
+            Utils.SymLinkError.PathAlreadyExists => return Error.DestAlreadyExist,
+            Utils.SymLinkError.FileNotFound => {
+                _ = cwd.statFile(
+                    io,
+                    rootPath,
+                    .{ .follow_symlinks = false },
+                ) catch return Error.RootNotExist;
+
+                // Use it instead of `destPath` to ensure there is not a trailing slash
+                const resolvedDestPath = destAbsPath[rootPath.len + 1 ..]; // `+ 1` for slash
+
+                var destPathIterator: PathIterator = .init(resolvedDestPath);
+
+                var currentAbsPath = rootPath;
+                while (destPathIterator.next()) |component| {
+                    currentAbsPath = currentAbsPath[0 .. currentAbsPath.len + component.len];
+
+                    // The destination is reached
+                    if (currentAbsPath.len == destAbsPath.len) {
+                        Utils.symLink(
+                            io,
+                            cwd,
+                            srcAbsPath,
+                            destAbsPath,
+                        ) catch return Error.SymLinkFail;
+
+                        try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
+                        return stdout.flush();
+                    }
+
+                    Utils.createDir(io, cwd, currentAbsPath) catch |dirErr| switch (dirErr) {
+                        Dir.CreateDirError.PathAlreadyExists => continue,
+                        Dir.CreateDirError.NotDir => return Error.DestComponentNotDir,
+                        else => return Error.SymLinkFail,
+                    };
+                }
+            },
+            else => return Error.SymLinkFail,
+        };
 
         try stdout.write(.{ "Successfully added ", srcPath, " to the dest in root" });
-        try stdout.flush();
+        return stdout.flush();
     }
 };
 pub const add = Add.add;
@@ -371,9 +415,7 @@ const Delete = struct {
 
         const rootPath = block: {
             try checkRootName(rootName);
-
             _ = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
-
             break :block pathBuilder.append(rootName);
         };
 

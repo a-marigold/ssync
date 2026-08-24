@@ -88,6 +88,8 @@ pub const PathBuilder = struct {
 
     /// Joins `relPath` with the current path in `buffer`, invalidating `end`.
     ///
+    /// Omits trailing slash.
+    ///
     /// Passing an absolute path here causes a wrong behaviour.
     ///
     /// Asserts that `buffer` has enough length to receive `relPath`.
@@ -96,10 +98,10 @@ pub const PathBuilder = struct {
     pub fn append(self: *@This(), relPath: []const u8) []const u8 {
         const buffer = @constCast(&self.buffer);
 
-        assert(self.end + relPath.len < buffer.len);
-
         var newEnd: usize = self.end;
         defer self.end = newEnd;
+
+        assert(newEnd + relPath.len < buffer.len);
 
         buffer[newEnd] = '/';
         newEnd += 1;
@@ -115,12 +117,13 @@ pub const PathBuilder = struct {
     }
     /// Invalidates `end` of the path.
     ///
-    /// Comptime asserts that `literalPath` is not absolute and does not end with a slash.
+    /// Comptime asserts that `literalPath` is not absolute,
+    /// does not end with a slash and fits `buffer`.
     pub inline fn appendLiteral(self: *@This(), comptime literalPath: []const u8) []const u8 {
         comptime {
             assert(literalPath[0] != '/' and literalPath[0] != '\\');
 
-            const lastChar = literalPath[literalPath - 1];
+            const lastChar = literalPath[literalPath.len - 1];
             assert(lastChar != '/' and lastChar != '\\');
         }
 
@@ -131,7 +134,7 @@ pub const PathBuilder = struct {
 
         const resolvedLiteralPath = "/" ++ literalPath;
 
-        @memcpy(buffer[newEnd..][0..resolvedLiteralPath], resolvedLiteralPath);
+        @memcpy(buffer[newEnd..][0..resolvedLiteralPath.len], resolvedLiteralPath);
         newEnd += resolvedLiteralPath.len;
 
         return buffer[0..newEnd];
@@ -149,6 +152,8 @@ pub const PathIterator = struct {
         return .{ .path = path };
     }
 
+    /// Returns the next component of the path or null when the path ends.
+    ///
     /// Can return an empty slice if the path is absolute
     /// (`/abc` does not contain anything before the first slash).
     pub inline fn next(self: *@This()) ?[]const u8 {
@@ -159,10 +164,7 @@ pub const PathIterator = struct {
                 findStrScalar(path, '\\') orelse return null,
                 findStrScalar(path, '/') orelse return null,
             ),
-            else => findStrScalar(
-                path,
-                '/',
-            ) orelse return null,
+            else => findStrScalar(path, '/') orelse return null,
         };
 
         defer self.path = path[nextSlashIndex + 1 ..];
@@ -296,5 +298,3 @@ pub fn __debug__(comptime fmt: []const u8, args: anytype) void {
     }
     debug.print(fmt ++ "\n", args);
 }
-
-// TODO: 'Path' struct with builder and iterator
