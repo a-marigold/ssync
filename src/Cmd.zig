@@ -714,23 +714,17 @@ const CheckRootNameError = error{
     RootNameTooLong,
     RootNameHasSlash,
 };
-/// Root names cannot be more than `MAX_ROOT_NAME_BYTES` and cannot include slashes (path separators).
+/// Root names cannot be longer than `MAX_ROOT_NAME_BYTES` and cannot include slashes (path separators).
 fn checkRootName(name: []const u8) CheckRootNameError!void {
     if (name.len > MAX_ROOT_NAME_BYTES) {
         return CheckRootNameError.RootNameTooLong;
     }
 
-    // TODO: Update: forbid backslashes not only on windows
-    switch (OS) {
-        .windows => if (Utils.findStrScalar(
-            name,
-            '/',
-        ) != null or Utils.findStrScalar(name, '\\') != null) {
-            return CheckRootNameError.RootNameHasSlash;
-        },
-        else => if (Utils.findStrScalar(name, '/') != null) {
-            return CheckRootNameError.RootNameHasSlash;
-        },
+    if (Utils.findStrScalar(
+        name,
+        '/',
+    ) != null or Utils.findStrScalar(name, '\\') != null) {
+        return CheckRootNameError.RootNameHasSlash;
     }
 }
 
