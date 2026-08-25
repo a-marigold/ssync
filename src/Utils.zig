@@ -3,21 +3,30 @@ const mem = std.mem;
 const Io = std.Io;
 const Dir = Io.Dir;
 const process = std.process;
+const Environ = process.Environ;
 const unicode = std.unicode;
 const debug = std.debug;
 const assert = debug.assert;
+const testing = std.testing;
 const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
 
 const MAX_PATH_BYTES = Dir.max_path_bytes;
-
 pub const UserPathError = error{
     GetUserProfileEnvFail,
     /// Only on windows.
     ConvertPathToUtf8Fail,
     GetHomeEnvFail,
 };
+
+pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
+    return mem.findScalarPos(u8, str, 0, searchValue);
+}
+
+pub inline fn eqlStr(a: []const u8, b: []const u8) bool {
+    return mem.eql(u8, a, b);
+}
 
 /// Writes to `buffer` the path to user dir.
 ///
@@ -46,7 +55,6 @@ pub inline fn getUserPath(
             const path = env.getPosix("HOME") orelse return UserPathError.GetHomeEnvFail;
 
             const bufferPath = buffer[0..path.len];
-
             @memcpy(bufferPath, path);
 
             return bufferPath;
@@ -54,19 +62,10 @@ pub inline fn getUserPath(
     }
 }
 
-pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
-    return mem.findScalarPos(u8, str, 0, searchValue);
-}
-
-inline fn eqlStr(a: []const u8, b: []const u8) bool {
-    return mem.eql(u8, a, b);
-}
-
 /// `path` must have length at least 1.
 pub fn isPathAbs(path: []const u8) bool {
     return switch (OS) {
         .windows => Dir.path.isAbsoluteWindows(path),
-
         else => path[0] == '/',
     };
 }
@@ -184,7 +183,6 @@ pub const SymLinkError = switch (OS) {
     .windows => Dir.SymLinkError | Dir.StatError,
     else => Dir.SymLinkError,
 };
-
 /// On windows, stats `targetPath` to find out is it a dir and passes appropriate flag to `dir.symLink` function.
 ///
 /// On other platforms just creates symlink 'cause the mentioned flag does not matters there.
@@ -214,23 +212,6 @@ pub inline fn symLink(
         },
     );
 }
-
-/// High-level wrapper over buffered, streaming `stdin`.
-pub const StdIn = struct {
-    reader: Io.File.Reader,
-
-    pub inline fn init(io: Io, buffer: []u8) @This() {
-        return .{ .reader = Io.File.stdin().readerStreaming(io, buffer) };
-    }
-
-    pub const ReadError = Io.Reader.Error;
-
-    pub inline fn readByte(self: *@This()) ReadError!u8 {
-        const reader: *Io.Reader = @constCast(&self.reader.interface);
-
-        return reader.takeByte();
-    }
-};
 
 /// High-level wrapper over streaming `stdout` or `stderr`.
 pub const StdOut = struct {
@@ -280,14 +261,14 @@ pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 ///
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
 pub inline fn confirm(
-    stdin: *StdIn,
+    stdin: *Io.Reader,
     stdout: *StdOut,
     /// An array of slices to be passed to `StdOut.writeVec`.
     query: anytype,
 ) ConfirmError!bool {
     stdout.writeVec(query) catch return ConfirmError.WriteFail;
 
-    const input = stdin.readByte() catch return ConfirmError.ReadFail;
+    const input = stdin.takeByte() catch return ConfirmError.ReadFail;
 
     return switch (input) {
         'y' => true,
@@ -295,6 +276,13 @@ pub inline fn confirm(
         else => ConfirmError.UnknownChar,
     };
 }
+
+// test "'confirm' writes 'query' to 'stdout'" {
+//     var stdoutBuffer: [100]u8 = undefined;
+//     const query = .{ "Hello", ", ", "World!" };
+
+//     confirm(.{}, &.{});
+// }
 
 pub const ExitCode = enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 };
 pub inline fn exit(code: ExitCode) noreturn {
@@ -305,5 +293,6 @@ pub fn __debug__(comptime fmt: []const u8, args: anytype) void {
     if (builtin.mode != .debug) {
         @compileError("'__debug__' is only for 'Debug' mode");
     }
+
     debug.print(fmt ++ "\n", args);
 }

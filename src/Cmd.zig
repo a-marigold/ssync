@@ -28,7 +28,6 @@ const __debug__ = Utils.__debug__;
 const OS = builtin.os.tag;
 const MAX_PATH_BYTES = Dir.max_path_bytes;
 
-const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 const PathBuilder = Utils.PathBuilder;
 const PathIterator = Utils.PathIterator;
@@ -449,7 +448,7 @@ const Delete = struct {
     pub fn delete(
         io: Io,
         env: Environ,
-        stdin: *StdIn,
+        stdin: *Io.Reader,
         stdout: *StdOut,
         args: Args,
     ) (Error || Utils.UserPathError || StdOut.WriteError || DeleteDirWithConfirmError)!void {
@@ -530,7 +529,7 @@ const Update = struct {
     fn update(
         io: Io,
         env: Environ,
-        stdin: *StdIn,
+        stdin: *Io.Reader,
         stdout: *StdOut,
         args: Args,
     ) (Error || Utils.UserPathError)!void {
@@ -598,7 +597,7 @@ const Update = struct {
     /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.
     inline fn replaceRoot(
         io: Io,
-        stdin: *StdIn,
+        stdin: *Io.Reader,
         stdout: *StdOut,
         rootPath: []const u8,
         srcAbsPath: []const u8,
@@ -664,7 +663,7 @@ const DeleteDirWithConfirmError = error{
 /// Uses `stdin` and `stdout` for confirmation.
 fn deleteDirWithConfirm(
     io: Io,
-    stdin: *StdIn,
+    stdin: *Io.Reader,
     stdout: *StdOut,
     dirPath: []const u8,
     /// To be passed to `Utils.confirm`.

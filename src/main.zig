@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const heap = std.heap;
 const Io = std.Io;
+const File = Io.File;
 const process = std.process;
 const Environ = process.Environ;
 const builtin = @import("builtin");
@@ -10,11 +11,9 @@ const Cmd = @import("Cmd.zig");
 
 const OS = builtin.os.tag;
 
-const StdIn = Utils.StdIn;
 const StdOut = Utils.StdOut;
 
 const ExitCode = Utils.ExitCode;
-
 const Errors = Cmd.Errors;
 
 pub fn main(init: process.Init.Minimal) !void {
@@ -41,9 +40,9 @@ pub fn main(init: process.Init.Minimal) !void {
     _ = args.skip();
 
     if (args.next()) |cmd| {
-        var stdin: StdIn = block: {
+        const stdin = block: {
             var buffer: [Cmd.STDIN_BUFFER_BYTES]u8 = undefined;
-            break :block .init(io, &buffer);
+            break :block @constCast(&Io.File.stdin().readerStreaming(io, &buffer).interface);
         };
         var stdout: StdOut = block: {
             var buffer: [Cmd.STDOUT_BUFFER_BYTES]u8 = undefined;
@@ -53,7 +52,7 @@ pub fn main(init: process.Init.Minimal) !void {
         const exitCode = dispatchCmd(
             io,
             env,
-            &stdin,
+            stdin,
             &stdout,
             &stderr,
             cmd,
@@ -77,7 +76,7 @@ pub fn main(init: process.Init.Minimal) !void {
 inline fn dispatchCmd(
     io: Io,
     env: Environ,
-    stdin: *StdIn,
+    stdin: *Io.Reader,
     stdout: *StdOut,
     stderr: *StdOut,
     cmd: []const u8,
