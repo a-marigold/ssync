@@ -296,7 +296,8 @@ pub inline fn confirm(
     };
 }
 
-pub inline fn exit(code: enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 }) noreturn {
+pub const ExitCode = enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 };
+pub inline fn exit(code: ExitCode) noreturn {
     process.exit(@intFromEnum(code));
 }
 
