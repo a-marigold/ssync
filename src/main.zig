@@ -53,12 +53,12 @@ pub fn main(init: process.Init.Minimal) !void {
             break :block .init(io, .StdErr, &buffer);
         };
 
-        if (eqlCmd(cmd, "--help")) {
+        if (Utils.eqlStr(cmd, "--help")) {
             try Cmd.help(&stdout);
             Utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "add")) {
+        if (Utils.eqlStr(cmd, "add")) {
             const addArgs: Cmd.AddArgs = .{
                 .root = args.next() orelse {
                     try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
@@ -79,7 +79,7 @@ pub fn main(init: process.Init.Minimal) !void {
             Utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "delete")) {
+        if (Utils.eqlStr(cmd, "delete")) {
             const deleteArgs: Cmd.DeleteArgs = .{
                 .root = args.next() orelse {
                     try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
@@ -93,7 +93,7 @@ pub fn main(init: process.Init.Minimal) !void {
             Utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "update")) {
+        if (Utils.eqlStr(cmd, "update")) {
             const updateArgs: Cmd.UpdateArgs = .{
                 .root = args.next() orelse {
                     try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
@@ -113,7 +113,7 @@ pub fn main(init: process.Init.Minimal) !void {
                 return stderr.write(try Errors.getErrMsg(err, .Update));
             Utils.exit(.Success);
         }
-        if (eqlCmd(cmd, "create")) {
+        if (Utils.eqlStr(cmd, "create")) {
             const createArgs: Cmd.CreateArgs = .{
                 .root = args.next() orelse {
                     try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
@@ -126,12 +126,12 @@ pub fn main(init: process.Init.Minimal) !void {
             Utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "list")) {
+        if (Utils.eqlStr(cmd, "list")) {
             try Cmd.list(io, env, &stdout);
             Utils.exit(.Success);
         }
 
-        if (eqlCmd(cmd, "config")) {
+        if (Utils.eqlStr(cmd, "config")) {
             Cmd.config(io, env, &stdout) catch |err|
                 return stderr.write(try Errors.getErrMsg(err, .Config));
             Utils.exit(.Success);
@@ -140,9 +140,4 @@ pub fn main(init: process.Init.Minimal) !void {
 
     try Cmd.help(&stderr);
     Utils.exit(.InvalidArg);
-}
-
-/// Compares `a` and `b` command names.
-inline fn eqlCmd(a: []const u8, b: []const u8) bool {
-    return mem.eql(u8, a, b);
 }

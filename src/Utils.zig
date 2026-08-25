@@ -58,6 +58,10 @@ pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
     return mem.findScalarPos(u8, str, 0, searchValue);
 }
 
+inline fn eqlStr(a: []const u8, b: []const u8) bool {
+    return mem.eql(u8, a, b);
+}
+
 /// `path` must have length at least 1.
 pub fn isPathAbs(path: []const u8) bool {
     return switch (OS) {
