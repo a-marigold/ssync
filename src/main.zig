@@ -50,7 +50,17 @@ pub fn main(init: process.Init.Minimal) !void {
             break :block .init(io, .StdErr, &buffer);
         };
 
-        Utils.exit(try dispatchCmd(io, env, &stdin, &stdout, &stderr, cmd, args));
+        const exitCode = dispatchCmd(
+            io,
+            env,
+            &stdin,
+            &stdout,
+            &stderr,
+            cmd,
+            args,
+        ) catch |err| return stderr.writeVec(.{ Errors.getErrMsg(err), "\n" });
+
+        Utils.exit(exitCode);
     }
 
     try Cmd.help(&stderr);
@@ -58,6 +68,8 @@ pub fn main(init: process.Init.Minimal) !void {
 }
 
 /// Calls a corresponding to `cmd` command function.
+///
+/// `args` iterator should be in a place of the first argument of command.
 ///
 /// Returns an exit code, which is zero in case of success or non-zero in case of handled error.
 ///
@@ -76,69 +88,63 @@ inline fn dispatchCmd(
     if (eqlStr(cmd, "add")) {
         const addArgs: Cmd.AddArgs = .{
             .root = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
                 return .InvalidArg;
             },
             .src = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("src") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("src"));
                 return .InvalidArg;
             },
             .dest = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("dest") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
                 return .InvalidArg;
             },
         };
 
-        Cmd.add(io, env, &stdout, addArgs) catch |err|
-            return stderr.write(try Errors.getErrMsg(err, .Add));
+        try Cmd.add(io, env, &stdout, addArgs);
         return .Success;
     }
 
     if (eqlStr(cmd, "delete")) {
         const deleteArgs: Cmd.DeleteArgs = .{
             .root = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
                 return .InvalidArg;
             },
             .dest = args.next(),
         };
-
-        Cmd.delete(io, env, &stdin, &stdout, deleteArgs) catch |err|
-            return stderr.write(try Errors.getErrMsg(err, .Delete));
-
+        try Cmd.delete(io, env, &stdin, &stdout, deleteArgs);
         return .Success;
     }
 
     if (eqlStr(cmd, "update")) {
         const updateArgs: Cmd.UpdateArgs = .{
             .root = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
                 return .InvalidArg;
             },
             .newSrc = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("src") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("newSrc"));
                 return .InvalidArg;
             },
             .dest = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("dest") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
                 return .InvalidArg;
             },
         };
 
-        Cmd.update(io, env, &stdin, &stdout, updateArgs) catch |err|
-            return stderr.write(try Errors.getErrMsg(err, .Update));
+        try Cmd.update(io, env, &stdin, &stdout, updateArgs);
         return .Success;
     }
     if (eqlStr(cmd, "create")) {
         const createArgs: Cmd.CreateArgs = .{
             .root = args.next() orelse {
-                try stderr.write(Errors.ARG_EXPECTED("root") ++ "\n");
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
                 return .InvalidArg;
             },
         };
 
-        Cmd.create(io, env, &stdout, createArgs) catch |err|
-            return stderr.write(try Errors.getErrMsg(err, .Create));
+        try Cmd.create(io, env, &stdout, createArgs);
         return .Success;
     }
 
@@ -148,8 +154,7 @@ inline fn dispatchCmd(
     }
 
     if (eqlStr(cmd, "config")) {
-        Cmd.config(io, env, &stdout) catch |err|
-            return stderr.write(try Errors.getErrMsg(err, .Config));
+        try Cmd.config(io, env, &stdout);
         return .Success;
     }
 
@@ -157,4 +162,8 @@ inline fn dispatchCmd(
         try Cmd.help(&stdout);
         return .Success;
     }
+}
+
+inline fn writeErrMsg(stderr: *StdOut, comptime msg: []const u8) !void {
+    return stderr.write(msg ++ "\n");
 }

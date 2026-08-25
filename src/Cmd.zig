@@ -61,51 +61,35 @@ pub const MAX_ROOT_NAME_BYTES = 100;
 ///
 /// Messages don't end with a line break.
 pub const Errors = struct {
-    /// If `err` is a logical error that have an appropriate message, returns the message.
+    /// If `err` is a command logical error that have an appropriate message, returns the message.
     ///
     /// Otherwise, returns `err` 'cause it is critical.
-    pub inline fn getErrMsg(err: anyerror, comptime cmd: enum { Config, Create, Add, Delete, Update }) ![]const u8 {
+    pub inline fn getErrMsg(err: anyerror) ![]const u8 {
         return switch (err) {
             CheckRootDestError.DestPathAbsolute => Errors.ROOT_DEST_PATH_ABSOLUTE,
             CheckRootDestError.DestPathEscapesRoot => Errors.ROOT_DEST_PATH_ESCAPES,
             CheckRootNameError.RootNameTooLong => Errors.ROOT_NAME_TOO_LONG,
             CheckRootNameError.RootNameHasSlash => Errors.ROOT_NAME_HAS_SLASH,
-            else => switch (cmd) {
-                .Add => switch (err) {
-                    AddError.CannotReplaceRoot => Errors.CANNOT_REPLACE_ROOT,
-                    AddError.DestAlreadyExist => Errors.ROOT_DEST_ALREADY_EXIST,
-                    AddError.DestComponentNotDir => Errors.DEST_COMPONENT_NOT_DIR,
-                    AddError.DestPathAbsolute => Errors.ROOT_DEST_PATH_ABSOLUTE,
-                    AddError.DestPathEscapesRoot => Errors.ROOT_DEST_PATH_ESCAPES,
-                    AddError.GetSrcAbsPathFail => Errors.GET_SRC_ABS_PATH_FAIL,
-                    AddError.RootNameHasSlash => Errors.ROOT_NAME_HAS_SLASH,
-                    else => err,
-                },
-                .Delete => switch (err) {
-                    DeleteError.DestNotExist => Errors.ROOT_DEST_NOT_EXIST,
-                    DeleteError.DeleteDestFail => Errors.DELETE_ROOT_DEST_FAIL,
-                    DeleteError.DeleteRootFail => Errors.DELETE_ROOT_FAIL,
-                    else => err,
-                },
-                .Update => switch (err) {
-                    UpdateError.SymLinkFail => Errors.SYM_LINK_FAIL,
-                    UpdateError.ReplaceRootFail => Errors.REPLACE_ROOT_FAIL,
-                    UpdateError.SrcNotDir => Errors.SRC_NOT_DIR,
-                    UpdateError.GetSrcAbsPathFail => Errors.GET_SRC_ABS_PATH_FAIL,
-                    else => err,
-                },
-                .Config => switch (err) {
-                    ConfigError.WriteConfigFail => Errors.WRITE_CONFIG_FAIL,
-                    ConfigError.StatConfigFail => Errors.STAT_CONFIG_FAIL,
-                    else => err,
-                },
-                .Create => switch (err) {
-                    CreateError.RootAlreadyExist => Errors.ROOT_ALREADY_EXIST,
-                    CreateError.CreateRootFail => Errors.CREATE_ROOT_FAIL,
-                    CreateError.CreateRootsDirFail => Errors.CREATE_ROOTS_DIR_FAIL,
-                    else => err,
-                },
-            },
+            AddError.CannotReplaceRoot => Errors.CANNOT_REPLACE_ROOT,
+            AddError.DestAlreadyExist => Errors.ROOT_DEST_ALREADY_EXIST,
+            AddError.DestComponentNotDir => Errors.DEST_COMPONENT_NOT_DIR,
+            AddError.DestPathAbsolute => Errors.ROOT_DEST_PATH_ABSOLUTE,
+            AddError.DestPathEscapesRoot => Errors.ROOT_DEST_PATH_ESCAPES,
+            AddError.GetSrcAbsPathFail => Errors.GET_SRC_ABS_PATH_FAIL,
+            AddError.RootNameHasSlash => Errors.ROOT_NAME_HAS_SLASH,
+            DeleteError.DestNotExist => Errors.ROOT_DEST_NOT_EXIST,
+            DeleteError.DeleteDestFail => Errors.DELETE_ROOT_DEST_FAIL,
+            DeleteError.DeleteRootFail => Errors.DELETE_ROOT_FAIL,
+            UpdateError.SymLinkFail => Errors.SYM_LINK_FAIL,
+            UpdateError.ReplaceRootFail => Errors.REPLACE_ROOT_FAIL,
+            UpdateError.SrcNotDir => Errors.SRC_NOT_DIR,
+            UpdateError.GetSrcAbsPathFail => Errors.GET_SRC_ABS_PATH_FAIL,
+            ConfigError.WriteConfigFail => Errors.WRITE_CONFIG_FAIL,
+            ConfigError.StatConfigFail => Errors.STAT_CONFIG_FAIL,
+            CreateError.RootAlreadyExist => Errors.ROOT_ALREADY_EXIST,
+            CreateError.CreateRootFail => Errors.CREATE_ROOT_FAIL,
+            CreateError.CreateRootsDirFail => Errors.CREATE_ROOTS_DIR_FAIL,
+            else => err,
         };
     }
 
