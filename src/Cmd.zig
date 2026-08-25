@@ -100,6 +100,8 @@ pub const Errors = struct {
         return PREFIX ++ "'" ++ argName ++ "' arg expected";
     }
 
+    pub const UNRECONGNIZED_CMD = PREFIX ++ "Unrecongnized command. Try '--help'";
+
     pub const ROOT_NAME_TOO_LONG = PREFIX ++ "The root name is too long";
     pub const ROOT_NAME_HAS_SLASH = PREFIX ++ "Root names cannot have slashes";
 

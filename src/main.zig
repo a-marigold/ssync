@@ -85,82 +85,83 @@ inline fn dispatchCmd(
 ) !ExitCode {
     const eqlStr = Utils.eqlStr;
 
-    if (eqlStr(cmd, "add")) {
-        const addArgs: Cmd.AddArgs = .{
-            .root = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                return .InvalidArg;
-            },
-            .src = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("src"));
-                return .InvalidArg;
-            },
-            .dest = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
-                return .InvalidArg;
-            },
-        };
+    switch (true) {
+        eqlStr(cmd, "add") => {
+            const addArgs: Cmd.AddArgs = .{
+                .root = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                    return .InvalidArg;
+                },
+                .src = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("src"));
+                    return .InvalidArg;
+                },
+                .dest = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
+                    return .InvalidArg;
+                },
+            };
 
-        try Cmd.add(io, env, &stdout, addArgs);
-        return .Success;
-    }
+            try Cmd.add(io, env, &stdout, addArgs);
+            return .Success;
+        },
+        eqlStr(cmd, "delete") => {
+            const deleteArgs: Cmd.DeleteArgs = .{
+                .root = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                    return .InvalidArg;
+                },
+                .dest = args.next(),
+            };
+            try Cmd.delete(io, env, &stdin, &stdout, deleteArgs);
+            return .Success;
+        },
+        eqlStr(cmd, "update") => {
+            const updateArgs: Cmd.UpdateArgs = .{
+                .root = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                    return .InvalidArg;
+                },
+                .newSrc = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("newSrc"));
+                    return .InvalidArg;
+                },
+                .dest = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
+                    return .InvalidArg;
+                },
+            };
 
-    if (eqlStr(cmd, "delete")) {
-        const deleteArgs: Cmd.DeleteArgs = .{
-            .root = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                return .InvalidArg;
-            },
-            .dest = args.next(),
-        };
-        try Cmd.delete(io, env, &stdin, &stdout, deleteArgs);
-        return .Success;
-    }
+            try Cmd.update(io, env, &stdin, &stdout, updateArgs);
+            return .Success;
+        },
+        eqlStr(cmd, "create") => {
+            const createArgs: Cmd.CreateArgs = .{
+                .root = args.next() orelse {
+                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                    return .InvalidArg;
+                },
+            };
 
-    if (eqlStr(cmd, "update")) {
-        const updateArgs: Cmd.UpdateArgs = .{
-            .root = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                return .InvalidArg;
-            },
-            .newSrc = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("newSrc"));
-                return .InvalidArg;
-            },
-            .dest = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
-                return .InvalidArg;
-            },
-        };
-
-        try Cmd.update(io, env, &stdin, &stdout, updateArgs);
-        return .Success;
-    }
-    if (eqlStr(cmd, "create")) {
-        const createArgs: Cmd.CreateArgs = .{
-            .root = args.next() orelse {
-                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                return .InvalidArg;
-            },
-        };
-
-        try Cmd.create(io, env, &stdout, createArgs);
-        return .Success;
-    }
-
-    if (eqlStr(cmd, "list")) {
-        try Cmd.list(io, env, &stdout);
-        return .Success;
-    }
-
-    if (eqlStr(cmd, "config")) {
-        try Cmd.config(io, env, &stdout);
-        return .Success;
-    }
-
-    if (eqlStr(cmd, "--help")) {
-        try Cmd.help(&stdout);
-        return .Success;
+            try Cmd.create(io, env, &stdout, createArgs);
+            return .Success;
+        },
+        eqlStr(cmd, "list") => {
+            try Cmd.list(io, env, &stdout);
+            return .Success;
+        },
+        eqlStr(cmd, "config") => {
+            try Cmd.config(io, env, &stdout);
+            return .Success;
+        },
+        eqlStr(cmd, "--help") => {
+            try Cmd.help(&stdout);
+            return .Success;
+        },
+        else => {
+            try writeErrMsg(stderr, Errors.UNRECONGNIZED_CMD);
+            return .InvalidArg;
+        },
     }
 }
 
