@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
 
     const testExe = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tests/root.zig"),
+            .root_source_file = b.path("tests.zig"),
             .target = target,
             .optimize = optimize,
         }),
