@@ -213,46 +213,30 @@ pub inline fn symLink(
     );
 }
 
-/// High-level wrapper over streaming `stdout` or `stderr`.
-pub const StdOut = struct {
-    writer: Io.File.Writer,
-
-    pub inline fn init(io: Io, comptime stdoutType: enum { StdOut, StdErr }, buffer: []u8) @This() {
-        return .{
-            .writer = switch (stdoutType) {
-                .StdOut => Io.File.stdout(),
-                .StdErr => Io.File.stderr(),
-            }.writerStreaming(io, buffer),
-        };
-    }
+/// High-level wrapper over `Io.Writer`.
+pub const Writer = struct {
+    writer: *Io.Writer,
 
     pub const WriteError = Io.Writer.Error;
 
     pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
-        const writer: *Io.Writer = @constCast(&self.writer.interface);
-
-        return writer.writeAll(data);
+        return self.writer.writeAll(data);
     }
 
-    /// Writes every slice of `vec` to the buffer of `init` function
+    /// Writes every slice of `vec` to the internal buffer
     /// and outputs it if the buffer ends.
     ///
     /// `vec` is an array (with comptime known length) of slices.
     pub inline fn writeVec(self: *@This(), vec: anytype) WriteError!void {
-        const writer: *Io.Writer = @constCast(&self.writer.interface);
-
-        inline for (vec) |slice| try writer.writeAll(slice);
+        inline for (vec) |slice| try self.writer.writeAll(slice);
     }
 
     pub inline fn writeByte(self: *@This(), byte: u8) WriteError!void {
-        const writer: *Io.Writer = @constCast(&self.writer.interface);
-
-        return writer.writeByte(byte);
+        return self.writer.writeByte(byte);
     }
 
     pub inline fn flush(self: *@This()) WriteError!void {
-        const writer: *Io.Writer = @constCast(&self.writer.interface);
-        return writer.flush();
+        return self.writer.flush();
     }
 };
 
@@ -262,8 +246,8 @@ pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
 pub inline fn confirm(
     stdin: *Io.Reader,
-    stdout: *StdOut,
-    /// An array of slices to be passed to `StdOut.writeVec`.
+    stdout: *Writer,
+    /// An array of slices to be passed to `Writer.writeVec`.
     query: anytype,
 ) ConfirmError!bool {
     stdout.writeVec(query) catch return ConfirmError.WriteFail;
@@ -279,6 +263,7 @@ pub inline fn confirm(
 
 // test "'confirm' writes 'query' to 'stdout'" {
 //     var stdoutBuffer: [100]u8 = undefined;
+
 //     const query = .{ "Hello", ", ", "World!" };
 
 //     confirm(.{}, &.{});

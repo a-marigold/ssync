@@ -11,7 +11,7 @@ const Cmd = @import("Cmd.zig");
 
 const OS = builtin.os.tag;
 
-const StdOut = Utils.StdOut;
+const Writer = Utils.Writer;
 
 const ExitCode = Utils.ExitCode;
 const Errors = Cmd.Errors;
@@ -22,11 +22,6 @@ pub fn main(init: process.Init.Minimal) !void {
     // Functions that use allocator in `Threaded` are not used, so `undefined` is passed
     var threaded: Io.Threaded = .init(undefined, .{});
     const io = threaded.io();
-
-    var stderr: StdOut = block: {
-        var buffer: [Cmd.STDERR_BUFFER_BYTES]u8 = undefined;
-        break :block .init(io, .StdErr, &buffer);
-    };
 
     var args = switch (OS) {
         .linux, .macos => init.args.iterate(),
@@ -39,30 +34,42 @@ pub fn main(init: process.Init.Minimal) !void {
     };
     _ = args.skip();
 
+    var stderr = block: {
+        var buffer: [Cmd.STDERR_BUFFER_BYTES]u8 = undefined;
+        var stderrWriter = File.stderr().writerStreaming(io, &buffer);
+
+        var writer: Writer = .{ .writer = &stderrWriter.interface };
+        break :block &writer;
+    };
+
     if (args.next()) |cmd| {
         const stdin = block: {
             var buffer: [Cmd.STDIN_BUFFER_BYTES]u8 = undefined;
-            break :block @constCast(&Io.File.stdin().readerStreaming(io, &buffer).interface);
+            break :block @constCast(&File.stdin().readerStreaming(io, &buffer).interface);
         };
-        var stdout: StdOut = block: {
+
+        const stdout = block: {
             var buffer: [Cmd.STDOUT_BUFFER_BYTES]u8 = undefined;
-            break :block .init(io, .StdErr, &buffer);
+            var stdoutWriter = File.stdout().writerStreaming(io, &buffer);
+
+            var writer: Writer = .{ .writer = &stdoutWriter.interface };
+            break :block &writer;
         };
 
         const exitCode = dispatchCmd(
             io,
             env,
             stdin,
-            &stdout,
-            &stderr,
+            stdout,
+            stderr,
             cmd,
-            args,
-        ) catch |err| return stderr.writeVec(.{ Errors.getErrMsg(err), "\n" });
+            &args,
+        ) catch |err| return stderr.writeVec(.{ try Errors.getErrMsg(err), "\n" });
 
         Utils.exit(exitCode);
     }
 
-    try Cmd.help(&stderr);
+    try Cmd.help(stderr);
     Utils.exit(.InvalidArg);
 }
 
@@ -77,93 +84,90 @@ inline fn dispatchCmd(
     io: Io,
     env: Environ,
     stdin: *Io.Reader,
-    stdout: *StdOut,
-    stderr: *StdOut,
+    stdout: *Writer,
+    stderr: *Writer,
     cmd: []const u8,
-    args: process.Args.Iterator,
+    args: *process.Args.Iterator,
 ) !ExitCode {
     const eqlStr = Utils.eqlStr;
 
-    switch (true) {
-        eqlStr(cmd, "add") => {
-            const addArgs: Cmd.AddArgs = .{
-                .root = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                    return .InvalidArg;
-                },
-                .src = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("src"));
-                    return .InvalidArg;
-                },
-                .dest = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
-                    return .InvalidArg;
-                },
-            };
+    if (eqlStr(cmd, "add")) {
+        const addArgs: Cmd.AddArgs = .{
+            .root = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                return .InvalidArg;
+            },
+            .src = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("src"));
+                return .InvalidArg;
+            },
+            .dest = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
+                return .InvalidArg;
+            },
+        };
 
-            try Cmd.add(io, env, &stdout, addArgs);
-            return .Success;
-        },
-        eqlStr(cmd, "delete") => {
-            const deleteArgs: Cmd.DeleteArgs = .{
-                .root = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                    return .InvalidArg;
-                },
-                .dest = args.next(),
-            };
-            try Cmd.delete(io, env, &stdin, &stdout, deleteArgs);
-            return .Success;
-        },
-        eqlStr(cmd, "update") => {
-            const updateArgs: Cmd.UpdateArgs = .{
-                .root = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                    return .InvalidArg;
-                },
-                .newSrc = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("newSrc"));
-                    return .InvalidArg;
-                },
-                .dest = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
-                    return .InvalidArg;
-                },
-            };
-
-            try Cmd.update(io, env, &stdin, &stdout, updateArgs);
-            return .Success;
-        },
-        eqlStr(cmd, "create") => {
-            const createArgs: Cmd.CreateArgs = .{
-                .root = args.next() orelse {
-                    try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
-                    return .InvalidArg;
-                },
-            };
-
-            try Cmd.create(io, env, &stdout, createArgs);
-            return .Success;
-        },
-        eqlStr(cmd, "list") => {
-            try Cmd.list(io, env, &stdout);
-            return .Success;
-        },
-        eqlStr(cmd, "config") => {
-            try Cmd.config(io, env, &stdout);
-            return .Success;
-        },
-        eqlStr(cmd, "--help") => {
-            try Cmd.help(&stdout);
-            return .Success;
-        },
-        else => {
-            try writeErrMsg(stderr, Errors.UNRECONGNIZED_CMD);
-            return .InvalidArg;
-        },
+        try Cmd.add(io, env, stdout, addArgs);
+        return .Success;
     }
+    if (eqlStr(cmd, "delete")) {
+        const deleteArgs: Cmd.DeleteArgs = .{
+            .root = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                return .InvalidArg;
+            },
+            .dest = args.next(),
+        };
+        try Cmd.delete(io, env, stdin, stdout, deleteArgs);
+        return .Success;
+    }
+    if (eqlStr(cmd, "update")) {
+        const updateArgs: Cmd.UpdateArgs = .{
+            .root = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                return .InvalidArg;
+            },
+            .newSrc = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("newSrc"));
+                return .InvalidArg;
+            },
+            .dest = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("dest"));
+                return .InvalidArg;
+            },
+        };
+
+        try Cmd.update(io, env, stdin, stdout, updateArgs);
+        return .Success;
+    }
+    if (eqlStr(cmd, "create")) {
+        const createArgs: Cmd.CreateArgs = .{
+            .root = args.next() orelse {
+                try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+                return .InvalidArg;
+            },
+        };
+
+        try Cmd.create(io, env, stdout, createArgs);
+        return .Success;
+    }
+    if (eqlStr(cmd, "list")) {
+        try Cmd.list(io, env, stdout);
+        return .Success;
+    }
+    if (eqlStr(cmd, "config")) {
+        try Cmd.config(io, env, stdout);
+        return .Success;
+    }
+    if (eqlStr(cmd, "--help")) {
+        try Cmd.help(stdout);
+        return .Success;
+    }
+
+    try writeErrMsg(stderr, Errors.UNRECONGNIZED_CMD);
+    return .InvalidArg;
 }
 
-inline fn writeErrMsg(stderr: *StdOut, comptime msg: []const u8) !void {
+inline fn writeErrMsg(stderr: *Writer, comptime msg: []const u8) !void {
     return stderr.write(msg ++ "\n");
 }
