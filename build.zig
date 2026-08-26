@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    // const installStep = b.getInstallStep();
+    const installStep = b.getInstallStep();
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -25,6 +25,22 @@ pub fn build(b: *std.Build) void {
 
     const checkStep = b.step("check", "Check without emiting binary");
     checkStep.dependOn(&exe.step);
+
+    const testStep = b.step("test", "Test");
+
+    const testExe = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    const runTest = b.addRunArtifact(testExe);
+    runTest.has_side_effects = true;
+
+    testStep.dependOn(&runTest.step);
+    installStep.dependOn(testStep);
 
     b.installArtifact(exe);
 }
