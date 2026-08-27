@@ -341,6 +341,54 @@ test "'confirm' returns 'ReadFail' error if reading from 'stdin' failed" {
     );
 }
 
+test "'confirm' writes 'query' to 'stdout'" {
+    const stdin = block: {
+        var buffer: [6]u8 = undefined;
+        var reader = testing.Reader.init(
+            &buffer,
+            &.{.{ .buffer = "n" }},
+        );
+        break :block &reader.interface;
+    };
+
+    const queryStr = "Hello, World. Goodbye";
+    const query = .{
+        queryStr[0..6],
+        queryStr[6..12],
+        queryStr[12..],
+    };
+
+    const stdout = block: {
+        var buffer: [queryStr.len]u8 = undefined;
+        var writer: Writer = .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+        break :block &writer;
+    };
+
+    _ = try confirm(stdin, stdout, query);
+    try testing.expectEqualStrings(queryStr, stdout.writer.buffered());
+}
+test "'confirm' returns 'WriteFail' error if writing to stdout failed" {
+    const stdin = block: {
+        var buffer: [10]u8 = undefined;
+        break :block @constCast(&testing.Reader.init(
+            &buffer,
+            &.{.{ .buffer = "y" }},
+        ).interface);
+    };
+    const queryStr = "q";
+    const query = .{queryStr};
+
+    const failingStdout = block: {
+        var stdout: Writer = .{ .writer = @constCast(&TestUtils.mockFailingIoWriter()) };
+        break :block &stdout;
+    };
+
+    try testing.expectError(
+        ConfirmError.WriteFail,
+        confirm(stdin, failingStdout, query),
+    );
+}
+
 pub const ExitCode = enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 };
 pub inline fn exit(code: ExitCode) noreturn {
     process.exit(@intFromEnum(code));
