@@ -176,6 +176,16 @@ pub const PathBuilder = struct {
         try testing.expectEqualStrings("././dir", result2);
         try testing.expectEqual("././dir".len, pathBuilder.end);
     }
+    test "`append` returns `AppendError.OutOfBuffer` if `relPath` is too big" {
+        var pathBuilder: PathBuilder = .init();
+
+        const relPath: [MAX_PATH_BYTES * 2]u8 = undefined;
+
+        try testing.expectError(
+            PathBuilder.AppendError.OutOfBuffer,
+            pathBuilder.append(&relPath),
+        );
+    }
 };
 test {
     testing.refAllDecls(PathBuilder);
