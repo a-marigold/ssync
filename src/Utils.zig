@@ -14,12 +14,6 @@ const TestUtils = @import("tests/TestUtils.zig");
 
 const OS = builtin.os.tag;
 const MAX_PATH_BYTES = Dir.max_path_bytes;
-pub const UserPathError = error{
-    GetUserProfileEnvFail,
-    /// Only on windows.
-    ConvertPathToUtf8Fail,
-    GetHomeEnvFail,
-};
 
 pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
     return mem.findScalarPos(u8, str, 0, searchValue);
@@ -29,6 +23,12 @@ pub inline fn eqlStr(a: []const u8, b: []const u8) bool {
     return mem.eql(u8, a, b);
 }
 
+pub const UserPathError = error{
+    GetUserProfileEnvFail,
+    /// Only on windows.
+    ConvertPathToUtf8Fail,
+    GetHomeEnvFail,
+};
 /// Writes to `buffer` the path to user dir.
 ///
 /// `buffer` must have length at list as the max path bytes of system.
@@ -82,19 +82,16 @@ pub const PathBuilder = struct {
     /// Never includes trailing slash.
     end: usize,
 
-    /// Copies `absPath` to initialized `PathBuilder.buffer`.
     pub inline fn init() @This() {
-        return .{
-            .buffer = undefined,
-            .end = 0,
-        };
+        return .{ .buffer = undefined, .end = 0 };
     }
 
     /// Joins `relPath` with the current path in `buffer`, invalidating `end`.
     ///
     /// Omits trailing slash.
     ///
-    /// Passing an absolute path here causes a wrong behaviour.
+    /// When `buffer` already has a path,
+    /// passing an absolute path here causes a wrong behaviour.
     ///
     /// Asserts that `buffer` has enough length to receive `relPath`.
     ///
@@ -113,12 +110,12 @@ pub const PathBuilder = struct {
         @memcpy(buffer[newEnd..][0..relPath.len], relPath);
 
         newEnd += relPath.len;
-
         // Omit trailing slash
         newEnd -= @intFromBool(relPath[relPath.len - 1] == '/');
 
         return buffer[0..newEnd];
     }
+
     /// Invalidates `end` of the path.
     ///
     /// Comptime asserts that `literalPath` is not absolute,
@@ -142,6 +139,37 @@ pub const PathBuilder = struct {
         newEnd += resolvedLiteralPath.len;
 
         return buffer[0..newEnd];
+    }
+
+    test "`append` and `appendLiteral` join `relPath` with the current buffer path and invalidates `end`" {
+        const initPath = "/home/u";
+
+        inline for (.{ append, appendLiteral }) |appendFn| {
+            inline for (.{ "./some/file.toml", "dir/file", "../out" }) |relPath| {
+                var pathBuilder: PathBuilder = .init();
+
+                const initPathResult = appendFn(&pathBuilder, initPath);
+                try testing.expectEqualStrings(initPath, initPathResult);
+                try testing.expectEqual(initPath.len, pathBuilder.end);
+
+                const fullResult = appendFn(&pathBuilder, relPath);
+                try testing.expectEqualStrings(initPath ++ relPath, fullResult);
+                try testing.expectEqual((initPath ++ relPath).len, pathBuilder.end);
+            }
+        }
+    }
+    test "'append' omits trailing slash of 'relPath'" {
+        var pathBuilder: PathBuilder = .init();
+
+        const relPath1 = "./";
+        const result1 = pathBuilder.append(relPath1);
+        try testing.expectEqualStrings(".", result1);
+        try testing.expectEqual(pathBuilder.end, 1);
+
+        const relPath2 = "./dir/";
+        const result2 = pathBuilder.append(relPath2);
+        try testing.expectEqualStrings("././dir", result2);
+        try testing.expectEqual("././dir".len, pathBuilder.len);
     }
 };
 
@@ -213,11 +241,10 @@ pub inline fn symLink(
         },
     );
 }
-
 /// High-level wrapper over `Io.Writer`.
 pub const Writer = struct {
     writer: *Io.Writer,
-
+    // TODO: delete this struct
     pub const WriteError = Io.Writer.Error;
 
     pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
@@ -365,6 +392,7 @@ test "'confirm' writes 'query' to 'stdout'" {
     };
 
     _ = try confirm(stdin, stdout, query);
+
     try testing.expectEqualStrings(queryStr, stdout.writer.buffered());
 }
 test "'confirm' returns 'WriteFail' error if writing to stdout failed" {

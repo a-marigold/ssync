@@ -110,6 +110,7 @@ inline fn dispatchCmd(
         try Cmd.add(io, env, stdout, addArgs);
         return .Success;
     }
+
     if (eqlStr(cmd, "delete")) {
         const deleteArgs: Cmd.DeleteArgs = .{
             .root = args.next() orelse {
@@ -121,6 +122,7 @@ inline fn dispatchCmd(
         try Cmd.delete(io, env, stdin, stdout, deleteArgs);
         return .Success;
     }
+
     if (eqlStr(cmd, "update")) {
         const updateArgs: Cmd.UpdateArgs = .{
             .root = args.next() orelse {
@@ -140,6 +142,7 @@ inline fn dispatchCmd(
         try Cmd.update(io, env, stdin, stdout, updateArgs);
         return .Success;
     }
+
     if (eqlStr(cmd, "create")) {
         const createArgs: Cmd.CreateArgs = .{
             .root = args.next() orelse {
@@ -151,14 +154,17 @@ inline fn dispatchCmd(
         try Cmd.create(io, env, stdout, createArgs);
         return .Success;
     }
+
     if (eqlStr(cmd, "list")) {
         try Cmd.list(io, env, stdout);
         return .Success;
     }
+
     if (eqlStr(cmd, "config")) {
         try Cmd.config(io, env, stdout);
         return .Success;
     }
+
     if (eqlStr(cmd, "--help")) {
         try Cmd.help(stdout);
         return .Success;
