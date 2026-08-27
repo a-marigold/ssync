@@ -10,8 +10,9 @@ const assert = debug.assert;
 const testing = std.testing;
 const builtin = @import("builtin");
 
-const OS = builtin.os.tag;
+const TestUtils = @import("tests/TestUtils.zig");
 
+const OS = builtin.os.tag;
 const MAX_PATH_BYTES = Dir.max_path_bytes;
 pub const UserPathError = error{
     GetUserProfileEnvFail,
@@ -244,10 +245,12 @@ pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 /// Writes `query` to `stdout`.
 ///
 /// Returns `true` if the first char read from `stdin` is `y` or `false` if `n`.
+///
+/// Case-sensitive.
 pub inline fn confirm(
     stdin: *Io.Reader,
     stdout: *Writer,
-    /// An array of slices to be passed to `Writer.writeVec`.
+    /// An array of slices to be passed to `stdout`.
     query: anytype,
 ) ConfirmError!bool {
     stdout.writeVec(query) catch return ConfirmError.WriteFail;
@@ -261,13 +264,82 @@ pub inline fn confirm(
     };
 }
 
-// test "'confirm' writes 'query' to 'stdout'" {
-//     var stdoutBuffer: [100]u8 = undefined;
+test "'confirm' returns appropriate bool for 'y' and 'n' chars from 'stdin'" {
+    const Case = struct { char: u8, result: bool };
+    inline for (.{
+        Case{ .char = 'y', .result = true },
+        Case{ .char = 'n', .result = false },
+    }) |case| {
+        const stdin = block: {
+            var buffer: [6]u8 = undefined;
+            var reader = testing.Reader.init(
+                &buffer,
+                &.{.{ .buffer = &.{case.char} }},
+            );
+            break :block &reader.interface;
+        };
 
-//     const query = .{ "Hello", ", ", "World!" };
+        const queryStr = "abc";
+        const query = .{queryStr};
 
-//     confirm(.{}, &.{});
-// }
+        const stdout = block: {
+            var buffer: [queryStr.len]u8 = undefined;
+            var writer: Writer = .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+
+            break :block &writer;
+        };
+
+        const result = try confirm(stdin, stdout, query);
+
+        try testing.expect(result == case.result);
+    }
+}
+test "'confirm' returns 'UnknownChar' error if 'stdin' consist of invalid char" {
+    const invalidInput = "INVALID";
+
+    const stdin = block: {
+        var buffer: [invalidInput.len]u8 = undefined;
+        var reader = testing.Reader.init(
+            &buffer,
+            &.{.{ .buffer = invalidInput }},
+        );
+        break :block &reader.interface;
+    };
+
+    const queryStr = "q";
+    const query = .{queryStr};
+
+    const stdout = block: {
+        var buffer: [queryStr.len]u8 = undefined;
+        var writer: Writer = .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+
+        break :block &writer;
+    };
+
+    try testing.expectError(
+        ConfirmError.UnknownChar,
+        confirm(stdin, stdout, query),
+    );
+}
+test "'confirm' returns 'ReadFail' error if reading from 'stdin' failed" {
+    var failingStdin = block: {
+        var buffer: [1]u8 = undefined;
+        break :block TestUtils.mockFailingIoReader(&buffer);
+    };
+
+    const queryStr = "q";
+
+    const query = .{queryStr};
+    var stdout: Writer = block: {
+        var buffer: [queryStr.len]u8 = undefined;
+        break :block .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+    };
+
+    try testing.expectError(
+        ConfirmError.ReadFail,
+        confirm(&failingStdin, &stdout, query),
+    );
+}
 
 pub const ExitCode = enum(u8) { Success = 0, GeneralError = 1, InvalidArg = 2 };
 pub inline fn exit(code: ExitCode) noreturn {

@@ -1,28 +1,20 @@
 const std = @import("std");
-const mem = std.mem;
 const Io = std.Io;
-const testing = std.testing;
 const builtin = @import("builtin");
 
 comptime {
     if (!builtin.is_test) @compileError("'TestUtils' is only for tests");
 }
 
-pub fn mockIoWriter(buffer: []u8) testing.WriterIndirect {
-    var outWriter: Io.Writer = .{
-        .vtable = &.{
-            .drain = struct {
-                fn drain(writer: *Io.Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
-                    _ = writer;
-                    _ = data;
-                    _ = splat;
-                    return 0;
-                }
-            }.drain,
-        },
-        .buffer = &.{},
-        .end = 0,
-    };
+/// `buffer` must have length at least 1 'cause some functions of the reader can cause a panic.
+pub fn mockFailingIoReader(buffer: []u8) Io.Reader {
+    var reader: Io.Reader = .failing;
+    reader.buffer = buffer;
 
-    return testing.WriterIndirect.init(&outWriter, buffer);
+    return reader;
+}
+/// Returned writer has zero-length buffer, so
+/// any writing method of `Io.Writer` calls the failing vtable functions.
+pub fn mockFailingIoWriter() Io.Writer {
+    return .failing;
 }
