@@ -86,30 +86,30 @@ pub const PathBuilder = struct {
         return .{ .buffer = undefined, .end = 0 };
     }
 
+    pub const AppendError = error{OutOfBuffer};
     /// Joins `relPath` with the current path in `buffer`, invalidating `end`.
     ///
     /// Omits trailing slash.
     ///
-    /// When `buffer` already has a path,
-    /// passing an absolute path here causes a wrong behaviour.
+    /// Passing an absolute path here causes a wrong behaviour.
     ///
-    /// Asserts that `buffer` has enough length to receive `relPath`.
+    /// If `relPath` doesn't fit `buffer`, returns `AppendError.OutOfBuffer`;
     ///
     /// Returns a slice of the result in `buffer`.
-    pub fn append(self: *@This(), relPath: []const u8) []const u8 {
+    pub fn append(self: *@This(), relPath: []const u8) AppendError![]const u8 {
         const buffer = @constCast(&self.buffer);
 
         var newEnd: usize = self.end;
         defer self.end = newEnd;
 
-        assert(newEnd + relPath.len < buffer.len);
+        if (newEnd + relPath.len > buffer.len) return AppendError.OutOfBuffer;
 
         buffer[newEnd] = '/';
         newEnd += 1;
 
         @memcpy(buffer[newEnd..][0..relPath.len], relPath);
-
         newEnd += relPath.len;
+
         // Omit trailing slash
         newEnd -= @intFromBool(relPath[relPath.len - 1] == '/');
 
@@ -118,8 +118,8 @@ pub const PathBuilder = struct {
 
     /// Invalidates `end` of the path.
     ///
-    /// Comptime asserts that `literalPath` is not absolute,
-    /// does not end with a slash and fits `buffer`.
+    /// Comptime asserts that `literalPath`
+    /// isn't absolute and doesn't end with a slash.
     pub inline fn appendLiteral(self: *@This(), comptime literalPath: []const u8) []const u8 {
         comptime {
             assert(literalPath[0] != '/' and literalPath[0] != '\\');
@@ -144,34 +144,42 @@ pub const PathBuilder = struct {
     test "`append` and `appendLiteral` join `relPath` with the current buffer path and invalidates `end`" {
         const initPath = "/home/u";
 
-        inline for (.{ append, appendLiteral }) |appendFn| {
-            inline for (.{ "./some/file.toml", "dir/file", "../out" }) |relPath| {
-                var pathBuilder: PathBuilder = .init();
+        inline for (.{ "./some/file.toml", "dir/file", "../out" }) |relPath| {
+            var pathBuilder: PathBuilder = .init();
 
-                const initPathResult = appendFn(&pathBuilder, initPath);
-                try testing.expectEqualStrings(initPath, initPathResult);
-                try testing.expectEqual(initPath.len, pathBuilder.end);
+            @memcpy(pathBuilder.buffer[0..initPath.len], initPath);
 
-                const fullResult = appendFn(&pathBuilder, relPath);
-                try testing.expectEqualStrings(initPath ++ relPath, fullResult);
-                try testing.expectEqual((initPath ++ relPath).len, pathBuilder.end);
-            }
+            const fullResult = try append(&pathBuilder, relPath);
+            try testing.expectEqualStrings(initPath ++ relPath, fullResult);
+            try testing.expectEqual((initPath ++ relPath).len, pathBuilder.end);
+        }
+        inline for (.{ "./some/file.toml", "dir/file", "../out" }) |relPath| {
+            var pathBuilder: PathBuilder = .init();
+
+            @memcpy(pathBuilder.buffer[0..initPath.len], initPath);
+
+            const fullResult = appendLiteral(&pathBuilder, relPath);
+            try testing.expectEqualStrings(initPath ++ relPath, fullResult);
+            try testing.expectEqual((initPath ++ relPath).len, pathBuilder.end);
         }
     }
-    test "'append' omits trailing slash of 'relPath'" {
+    test "`append` omits trailing slash of `relPath`" {
         var pathBuilder: PathBuilder = .init();
 
         const relPath1 = "./";
-        const result1 = pathBuilder.append(relPath1);
+        const result1 = try pathBuilder.append(relPath1);
         try testing.expectEqualStrings(".", result1);
         try testing.expectEqual(pathBuilder.end, 1);
 
         const relPath2 = "./dir/";
-        const result2 = pathBuilder.append(relPath2);
+        const result2 = try pathBuilder.append(relPath2);
         try testing.expectEqualStrings("././dir", result2);
-        try testing.expectEqual("././dir".len, pathBuilder.len);
+        try testing.expectEqual("././dir".len, pathBuilder.end);
     }
 };
+test {
+    testing.refAllDecls(PathBuilder);
+}
 
 /// Iterator over a path's components.
 pub const PathIterator = struct {
