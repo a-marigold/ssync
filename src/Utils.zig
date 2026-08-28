@@ -237,20 +237,26 @@ pub const PathIterator = struct {
 
     /// Returns the next component of the path or null when the path ends.
     ///
+    /// Invalidates `path.ptr` and `path.len`.
+    ///
     /// Can return an empty slice if the path is absolute
     /// (`/abc` does not contain anything before the first slash).
     pub inline fn next(self: *@This()) ?[]const u8 {
         const path = self.path;
 
         const nextSlashIndex: usize = switch (OS) {
-            .windows => @min(
-                findStrScalar(path, '\\') orelse return null,
-                findStrScalar(path, '/') orelse return null,
-            ),
+            .windows => block: {
+                const slashIndex = findStrScalar(path, '/');
+                const backSlashIndex = findStrScalar(path, '\\');
+
+                if (slashIndex == null and backSlashIndex == null) return null;
+
+                break :block @min(findStrScalar(path, '\\'), findStrScalar(path, '/'));
+            },
             else => findStrScalar(path, '/') orelse return null,
         };
 
-        defer self.path = path[nextSlashIndex + 1 ..];
+        self.path = path[nextSlashIndex + 1 ..];
         return path[0..nextSlashIndex];
     }
 };
