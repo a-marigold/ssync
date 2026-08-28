@@ -19,6 +19,7 @@ const Dir = Io.Dir;
 const File = Io.File;
 const process = std.process;
 const Environ = process.Environ;
+const unicode = std.unicode;
 const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
 const SsyncConfig = @import("SsyncConfig.zig");
@@ -220,7 +221,7 @@ const Config = struct {
         io: Io,
         env: Environ,
         stdout: *Writer,
-    ) (Error || Utils.UserPathError || Writer.WriteError)!void {
+    ) (Error || UserPathError || Writer.WriteError)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const configPath = pathBuilder.appendLiteral(CONFIG_PATH);
@@ -269,7 +270,7 @@ const Create = struct {
         env: Environ,
         stdout: *Writer,
         args: Args,
-    ) (Error || Utils.UserPathError || Writer.WriteError)!void {
+    ) (Error || UserPathError || Writer.WriteError)!void {
         const rootName = args.root;
 
         var pathBuilder = try initUserPathBuilder(env);
@@ -338,7 +339,7 @@ const Add = struct {
         env: Environ,
         stdout: *Writer,
         args: Args,
-    ) (Error || Utils.UserPathError || Writer.WriteError)!void {
+    ) (Error || UserPathError || Writer.WriteError)!void {
         const rootName = args.root;
         const srcPath = args.src;
         const destPath = args.dest;
@@ -447,7 +448,7 @@ const Delete = struct {
         stdin: *Io.Reader,
         stdout: *Writer,
         args: Args,
-    ) (Error || Utils.UserPathError || Writer.WriteError || DeleteDirWithConfirmError)!void {
+    ) (Error || UserPathError || Writer.WriteError || DeleteDirWithConfirmError)!void {
         const rootName = args.root;
         const destPath = args.dest;
 
@@ -528,7 +529,7 @@ const Update = struct {
         stdin: *Io.Reader,
         stdout: *Writer,
         args: Args,
-    ) (Error || Utils.UserPathError)!void {
+    ) (Error || UserPathError)!void {
         const rootName = args.root;
         const srcPath = args.newSrc;
         const destPath = args.dest;
@@ -635,17 +636,27 @@ pub const UpdateArgs = Update.Args;
 // Cmd Utils
 // ---------
 
+const UserPathError = error{EnvGetHomeFail} || (if (OS == .windows) error{ConvertUserPathToUtf8Fail} else error{});
+
 /// Initializes `PathBuilder` with copying the user path there.
 /// `result.buffer[0..result.end]` contains the user path.
-inline fn initUserPathBuilder(env: Environ) Utils.UserPathError!PathBuilder {
-    var pathBuilder: PathBuilder = .init();
+inline fn initUserPathBuilder(env: Environ) UserPathError!PathBuilder {
+    switch (OS) {
+        .windows => {
+            var pathBuilder: PathBuilder = .init();
 
-    const userPathLen = (try Utils.getUserPath(
-        env,
-        &pathBuilder.buffer,
-    )).len;
-    pathBuilder.end = userPathLen;
-    return pathBuilder;
+            const utf16UserPath = Utils.getHomeEnv(env) orelse UserPathError.EnvGetHomeFail;
+
+            const utf8UserPathLen = unicode.utf16LeToUtf8(
+                &pathBuilder.buffer,
+                utf16UserPath,
+            ) catch return UserPathError.ConvertUserPathToUtf8Fail;
+            pathBuilder.end = utf8UserPathLen;
+
+            return pathBuilder;
+        },
+        else => return .initPath(Utils.getHomeEnv(env) orelse return UserPathError.EnvGetHomeFail),
+    }
 }
 
 const DeleteDirWithConfirmError = error{
@@ -679,10 +690,13 @@ fn deleteDirWithConfirm(
                     else => return DeleteDirWithConfirmError.ConfirmationFail,
                 };
 
-                if (isConfirmed) return cwd.deleteTree(
-                    io,
-                    dirPath,
-                ) catch DeleteDirWithConfirmError.DeleteFail else return;
+                if (isConfirmed)
+                    return cwd.deleteTree(
+                        io,
+                        dirPath,
+                    ) catch DeleteDirWithConfirmError.DeleteFail
+                else
+                    return;
             }
         },
         Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
