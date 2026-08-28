@@ -29,7 +29,6 @@ const __debug__ = Utils.__debug__;
 const OS = builtin.os.tag;
 const MAX_PATH_BYTES = Dir.max_path_bytes;
 
-const Writer = Utils.Writer;
 const PathBuilder = Utils.PathBuilder;
 const PathIterator = Utils.PathIterator;
 
@@ -159,8 +158,8 @@ const Help = struct {
     /// Writes the help text to `stdout`.
     ///
     /// Errors returned by this function are only critical.
-    fn help(stdout: *Writer) !void {
-        try stdout.write(TEXT);
+    fn help(stdout: *Io.Writer) !void {
+        try stdout.writeAll(TEXT);
         try stdout.flush();
     }
 };
@@ -168,7 +167,7 @@ pub const help = Help.help;
 
 const List = struct {
     /// Errors returned by this function are only critical.
-    fn list(io: Io, env: Environ, stdout: *Writer) !void {
+    fn list(io: Io, env: Environ, stdout: *Io.Writer) !void {
         var pathBuilder = try initUserPathBuilder(env);
         const rootsDirPath = pathBuilder.appendLiteral(ROOTS_DIR_PATH);
 
@@ -183,7 +182,7 @@ const List = struct {
                 .{ .iterate = true, .follow_symlinks = true },
             ) catch |err| switch (err) {
                 Dir.OpenError.FileNotFound => {
-                    try stdout.write(noRootCreatedMsg);
+                    try stdout.writeAll(noRootCreatedMsg);
                     return stdout.flush();
                 },
                 else => return err,
@@ -194,7 +193,7 @@ const List = struct {
         };
 
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
-            try stdout.write(noRootCreatedMsg);
+            try stdout.writeAll(noRootCreatedMsg);
             return stdout.flush();
         };
 
@@ -220,15 +219,15 @@ const Config = struct {
     fn config(
         io: Io,
         env: Environ,
-        stdout: *Writer,
-    ) (Error || UserPathError || Writer.WriteError)!void {
+        stdout: *Io.Writer,
+    ) (Error || UserPathError || Io.Writer.Error)!void {
         var pathBuilder = try initUserPathBuilder(env);
 
         const configPath = pathBuilder.appendLiteral(CONFIG_PATH);
 
         try createConfig(io, configPath);
 
-        try stdout.write(configPath);
+        try stdout.writeAll(configPath);
         try stdout.writeByte('\n');
         return stdout.flush();
     }
@@ -268,9 +267,9 @@ const Create = struct {
     fn create(
         io: Io,
         env: Environ,
-        stdout: *Writer,
+        stdout: *Io.Writer,
         args: Args,
-    ) (Error || UserPathError || Writer.WriteError)!void {
+    ) (Error || UserPathError || Io.Writer.Error)!void {
         const rootName = args.root;
 
         var pathBuilder = try initUserPathBuilder(env);
@@ -310,7 +309,7 @@ const Create = struct {
             }
         };
 
-        try stdout.write("Root was successfully created\n");
+        try stdout.writeAll("Root was successfully created\n");
         return stdout.flush();
     }
 };
@@ -337,9 +336,9 @@ const Add = struct {
     fn add(
         io: Io,
         env: Environ,
-        stdout: *Writer,
+        stdout: *Io.Writer,
         args: Args,
-    ) (Error || UserPathError || Writer.WriteError)!void {
+    ) (Error || UserPathError || Io.Writer.Error)!void {
         const rootName = args.root;
         const srcPath = args.src;
         const destPath = args.dest;
@@ -446,9 +445,9 @@ const Delete = struct {
         io: Io,
         env: Environ,
         stdin: *Io.Reader,
-        stdout: *Writer,
+        stdout: *Io.Writer,
         args: Args,
-    ) (Error || UserPathError || Writer.WriteError || DeleteDirWithConfirmError)!void {
+    ) (Error || UserPathError || Io.Writer.Error || DeleteDirWithConfirmError)!void {
         const rootName = args.root;
         const destPath = args.dest;
 
@@ -527,7 +526,7 @@ const Update = struct {
         io: Io,
         env: Environ,
         stdin: *Io.Reader,
-        stdout: *Writer,
+        stdout: *Io.Writer,
         args: Args,
     ) (Error || UserPathError)!void {
         const rootName = args.root;
@@ -564,6 +563,7 @@ const Update = struct {
             break :block buffer[0..absPathLen];
         };
 
+        // TODO: add `stdout` writing on success
         if (destAbsPath.len == rootPath.len) return replaceRoot(
             io,
             stdin,
@@ -595,7 +595,7 @@ const Update = struct {
     inline fn replaceRoot(
         io: Io,
         stdin: *Io.Reader,
-        stdout: *Writer,
+        stdout: *Io.Writer,
         rootPath: []const u8,
         srcAbsPath: []const u8,
     ) ReplaceRootError!void {
@@ -619,6 +619,7 @@ const Update = struct {
             return ReplaceRootError.SrcNotDir;
         }
 
+        // TODO: add 'stdout' writing on success
         // `Utils.symLink` isn't used not to do `stat` on windows twice
         return cwd.symLink(
             io,
@@ -671,7 +672,7 @@ const DeleteDirWithConfirmError = error{
 fn deleteDirWithConfirm(
     io: Io,
     stdin: *Io.Reader,
-    stdout: *Writer,
+    stdout: *Io.Writer,
     dirPath: []const u8,
     /// To be passed to `Utils.confirm`.
     confirmQuery: anytype,

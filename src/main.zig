@@ -11,9 +11,8 @@ const Cmd = @import("Cmd.zig");
 
 const OS = builtin.os.tag;
 
-const Writer = Utils.Writer;
-
 const ExitCode = Utils.ExitCode;
+
 const Errors = Cmd.Errors;
 
 pub fn main(init: process.Init.Minimal) !void {
@@ -38,8 +37,7 @@ pub fn main(init: process.Init.Minimal) !void {
         var buffer: [Cmd.STDERR_BUFFER_BYTES]u8 = undefined;
         var stderrWriter = File.stderr().writerStreaming(io, &buffer);
 
-        var writer: Writer = .{ .writer = &stderrWriter.interface };
-        break :block &writer;
+        break :block &stderrWriter.interface;
     };
 
     if (args.next()) |cmd| {
@@ -52,8 +50,7 @@ pub fn main(init: process.Init.Minimal) !void {
             var buffer: [Cmd.STDOUT_BUFFER_BYTES]u8 = undefined;
             var stdoutWriter = File.stdout().writerStreaming(io, &buffer);
 
-            var writer: Writer = .{ .writer = &stdoutWriter.interface };
-            break :block &writer;
+            break :block &stdoutWriter.interface;
         };
 
         const exitCode = dispatchCmd(
@@ -84,8 +81,8 @@ inline fn dispatchCmd(
     io: Io,
     env: Environ,
     stdin: *Io.Reader,
-    stdout: *Writer,
-    stderr: *Writer,
+    stdout: *Io.Writer,
+    stderr: *Io.Writer,
     cmd: []const u8,
     args: *process.Args.Iterator,
 ) !ExitCode {
@@ -174,6 +171,6 @@ inline fn dispatchCmd(
     return .InvalidArg;
 }
 
-inline fn writeErrMsg(stderr: *Writer, comptime msg: []const u8) !void {
-    return stderr.write(msg ++ "\n");
+inline fn writeErrMsg(stderr: *Io.Writer, comptime msg: []const u8) !void {
+    return stderr.writeAll(msg ++ "\n");
 }

@@ -373,32 +373,6 @@ pub inline fn symLink(
         },
     );
 }
-/// High-level wrapper over `Io.Writer`.
-pub const Writer = struct {
-    writer: *Io.Writer,
-    // TODO: delete this struct
-    pub const WriteError = Io.Writer.Error;
-
-    pub inline fn write(self: *@This(), data: []const u8) WriteError!void {
-        return self.writer.writeAll(data);
-    }
-
-    /// Writes every slice of `vec` to the internal buffer
-    /// and outputs it if the buffer ends.
-    ///
-    /// `vec` is an array (with comptime known length) of slices.
-    pub inline fn writeVec(self: *@This(), vec: anytype) WriteError!void {
-        inline for (vec) |slice| try self.writer.writeAll(slice);
-    }
-
-    pub inline fn writeByte(self: *@This(), byte: u8) WriteError!void {
-        return self.writer.writeByte(byte);
-    }
-
-    pub inline fn flush(self: *@This()) WriteError!void {
-        return self.writer.flush();
-    }
-};
 
 pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 /// Writes `query` to `stdout`.
@@ -408,7 +382,7 @@ pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 /// Case-sensitive.
 pub inline fn confirm(
     stdin: *Io.Reader,
-    stdout: *Writer,
+    stdout: *Io.Writer,
     /// An array of slices to be passed to `stdout`.
     query: anytype,
 ) ConfirmError!bool {
@@ -443,7 +417,7 @@ test "'confirm' returns appropriate bool for 'y' and 'n' chars from 'stdin'" {
 
         const stdout = block: {
             var buffer: [queryStr.len]u8 = undefined;
-            var writer: Writer = .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+            var writer: Io.Writer = .fixed(&buffer);
 
             break :block &writer;
         };
@@ -470,7 +444,7 @@ test "'confirm' returns 'UnknownChar' error if 'stdin' consist of invalid char" 
 
     const stdout = block: {
         var buffer: [queryStr.len]u8 = undefined;
-        var writer: Writer = .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+        var writer: Io.Writer = .fixed(&buffer);
 
         break :block &writer;
     };
@@ -489,9 +463,9 @@ test "'confirm' returns 'ReadFail' error if reading from 'stdin' failed" {
     const queryStr = "q";
 
     const query = .{queryStr};
-    var stdout: Writer = block: {
+    var stdout: Io.Writer = block: {
         var buffer: [queryStr.len]u8 = undefined;
-        break :block .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+        break :block .fixed(&buffer);
     };
 
     try testing.expectError(
@@ -519,7 +493,7 @@ test "'confirm' writes 'query' to 'stdout'" {
 
     const stdout = block: {
         var buffer: [queryStr.len]u8 = undefined;
-        var writer: Writer = .{ .writer = @constCast(&Io.Writer.fixed(&buffer)) };
+        var writer: Io.Writer = Io.Writer.fixed(&buffer);
         break :block &writer;
     };
 
@@ -539,7 +513,7 @@ test "'confirm' returns 'WriteFail' error if writing to stdout failed" {
     const query = .{queryStr};
 
     const failingStdout = block: {
-        var stdout: Writer = .{ .writer = @constCast(&TestUtils.mockFailingIoWriter()) };
+        var stdout: Io.Writer = TestUtils.mockFailingIoWriter();
         break :block &stdout;
     };
 
