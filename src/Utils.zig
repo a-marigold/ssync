@@ -279,6 +279,72 @@ pub const PathIterator = struct {
         self.path = path[nextSlashIndex + 1 ..];
         return path[0..nextSlashIndex];
     }
+
+    test "`next` returns the next component of `path` and `null` when `path` ends" {
+        const somePath = "../dir/./file.txt";
+
+        var pathIterator: PathIterator = .init(somePath);
+
+        try testing.expectEqualStrings("..", pathIterator.next().?);
+        try testing.expectEqualStrings("dir", pathIterator.next().?);
+        try testing.expectEqualStrings(".", pathIterator.next().?);
+        try testing.expectEqualStrings("file.txt", pathIterator.next().?);
+
+        try testing.expectEqual(null, pathIterator.next());
+        try testing.expectEqual(null, pathIterator.next());
+        try testing.expectEqual(null, pathIterator.next());
+    }
+
+    test "`next` returns an empty slice for the first iteration over absolute `path`" {
+        const absPath = "/usr/bin";
+
+        var pathIterator: PathIterator = .init(absPath);
+
+        try testing.expectEqual(0, pathIterator.next().?.len);
+    }
+    test "`next` returns an empty slice when path has consequent slashes" {
+        const somePath = "///home///hellowo";
+
+        var pathIterator: PathIterator = .init(somePath);
+
+        try testing.expectEqual(0, pathIterator.next().?.len);
+        try testing.expectEqual(0, pathIterator.next().?.len);
+        try testing.expectEqual(0, pathIterator.next().?.len);
+
+        try testing.expectEqualStrings("home", pathIterator.next().?);
+
+        try testing.expectEqual(0, pathIterator.next().?.len);
+        try testing.expectEqual(0, pathIterator.next().?.len);
+
+        try testing.expectEqualStrings("hellowo", pathIterator.next().?);
+    }
+
+    test "`next` returns null when only a traling slash is left" {
+        {
+            const somePath = "/";
+
+            var pathIterator: PathIterator = .init(somePath);
+
+            try testing.expectEqual(0, pathIterator.next().?.len);
+
+            try testing.expectEqual(null, pathIterator.next());
+            try testing.expectEqual(null, pathIterator.next());
+            try testing.expectEqual(null, pathIterator.next());
+        }
+        {
+            const somePath = "./abc/def/";
+
+            var pathIterator: PathIterator = .init(somePath);
+
+            _ = pathIterator.next(); // `.`
+            _ = pathIterator.next(); // `abc`
+            _ = pathIterator.next(); // `def`
+
+            try testing.expectEqual(null, pathIterator.next());
+            try testing.expectEqual(null, pathIterator.next());
+            try testing.expectEqual(null, pathIterator.next());
+        }
+    }
 };
 
 test {
