@@ -197,7 +197,7 @@ const List = struct {
             return stdout.flush();
         };
 
-        try stdout.writeVec(.{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" });
+        try Utils.writeArray(stdout, .{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" });
 
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
@@ -206,12 +206,13 @@ const List = struct {
                 if (entry.kind != .directory) continue;
             }
 
-            try stdout.writeVec(.{ "  ", entry.name, "\n" });
+            try Utils.writeArray(stdout, .{ "  ", entry.name, "\n" });
         }
 
         return stdout.flush();
     }
 };
+
 pub const list = List.list;
 
 const Config = struct {
@@ -407,7 +408,7 @@ const Add = struct {
                             destAbsPath,
                         ) catch return Error.SymLinkFail;
 
-                        try stdout.writeVec(.{ "Successfully added ", srcPath, " to the dest in root" });
+                        try Utils.writeArray(stdout, .{ "Successfully added ", srcPath, " to the dest in root" });
                         return stdout.flush();
                     }
                     Utils.createDir(io, cwd, currentAbsPath) catch |dirErr| switch (dirErr) {
@@ -420,7 +421,8 @@ const Add = struct {
             else => return Error.SymLinkFail,
         };
 
-        try stdout.writeVec(.{ "Successfully added ", srcPath, " to the dest in root" });
+        try Utils.writeArray(stdout, .{ "Successfully added ", srcPath, " to the dest in root" });
+
         return stdout.flush();
     }
 };

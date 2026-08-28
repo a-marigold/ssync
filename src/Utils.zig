@@ -374,6 +374,11 @@ pub inline fn symLink(
     );
 }
 
+/// Inlines `writer` writes of slices of `data` array (with comptime-known size).
+pub inline fn writeArray(writer: *Io.Writer, data: anytype) !void {
+    inline for (data) |slice| try writer.writeAll(slice);
+}
+
 pub const ConfirmError = error{ UnknownChar, ReadFail, WriteFail };
 /// Writes `query` to `stdout`.
 ///
@@ -386,7 +391,7 @@ pub inline fn confirm(
     /// An array of slices to be passed to `stdout`.
     query: anytype,
 ) ConfirmError!bool {
-    stdout.writeVec(query) catch return ConfirmError.WriteFail;
+    writeArray(stdout, query) catch return ConfirmError.WriteFail;
 
     const input = stdin.takeByte() catch return ConfirmError.ReadFail;
 

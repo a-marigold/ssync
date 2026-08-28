@@ -33,7 +33,7 @@ pub fn main(init: process.Init.Minimal) !void {
     };
     _ = args.skip();
 
-    var stderr = block: {
+    const stderr = block: {
         var buffer: [Cmd.STDERR_BUFFER_BYTES]u8 = undefined;
         var stderrWriter = File.stderr().writerStreaming(io, &buffer);
 
@@ -61,7 +61,7 @@ pub fn main(init: process.Init.Minimal) !void {
             stderr,
             cmd,
             &args,
-        ) catch |err| return stderr.writeVec(.{ try Errors.getErrMsg(err), "\n" });
+        ) catch |err| return Utils.writeArray(stdout, .{ try Errors.getErrMsg(err), "\n" });
 
         Utils.exit(exitCode);
     }
