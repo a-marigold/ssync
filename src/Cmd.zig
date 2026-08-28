@@ -749,6 +749,7 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
     var componentsCount: i32 = 0;
 
     while (destPathIterator.next()) |component| switch (component.len) {
+        0 => continue,
         1 => componentsCount += @intFromBool(component[0] != '.'),
         2 => {
             const isParentDir = component[0] == '.' and component[1] == '.';
@@ -758,9 +759,7 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
         else => componentsCount += 1,
     };
 
-    if (componentsCount < 0) {
-        return CheckRootDestError.DestPathEscapesRoot;
-    }
+    if (componentsCount < 0) return CheckRootDestError.DestPathEscapesRoot;
 }
 
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
