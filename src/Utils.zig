@@ -247,37 +247,22 @@ pub const PathIterator = struct {
 
         if (path.len == 0) return null;
 
-        const nextSlashIndex: usize = switch (OS) {
-            .windows => block: {
-                var pathIndex: usize = 0;
+        var pathIndex: usize = 0;
 
-                while (pathIndex < path.len and
-                    path[pathIndex] != '/' and path[pathIndex] != '\\') pathIndex += 1;
+        while (pathIndex < path.len) : (pathIndex += 1) {
+            const char = path[pathIndex];
 
-                if (pathIndex == path.len) {
-                    self.path.len = 0;
-                    return path[0..];
-                }
+            if (char == '/') break;
+            if ((comptime OS == .windows) and char == '\\') break;
+        }
 
-                break :block pathIndex;
-            },
-            else => block: {
-                var pathIndex: usize = 0;
+        if (pathIndex == path.len) {
+            self.path.len = 0;
+            return path[0..];
+        }
 
-                while (pathIndex < path.len and path[pathIndex] != '/') pathIndex += 1;
-
-                if (pathIndex == path.len) {
-                    self.path.len = 0;
-                    return path[0..];
-                }
-
-                break :block pathIndex;
-            },
-        };
-
-        // TODO: combine platforms' logic to a single code
-        self.path = path[nextSlashIndex + 1 ..];
-        return path[0..nextSlashIndex];
+        self.path = path[pathIndex + 1 ..];
+        return path[0..pathIndex];
     }
 
     test "`next` returns the next component of `path` and `null` when `path` ends" {
