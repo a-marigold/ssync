@@ -235,31 +235,55 @@ pub const PathIterator = struct {
         return .{ .path = path };
     }
 
-    /// Returns the next component of the path or null when the path ends.
+    /// Returns the next component of `path` or `null` in case of its end.
     ///
     /// Invalidates `path.ptr` and `path.len`.
     ///
-    /// Can return an empty slice if the path is absolute
-    /// (`/abc` does not contain anything before the first slash).
+    /// Returns an empty slice if:
+    /// - it's the first iteration over an absolute path
+    /// - `path` contains multiple slashes (`///home///dir`)
     pub inline fn next(self: *@This()) ?[]const u8 {
         const path = self.path;
 
+        if (path.len == 0) return null;
+
         const nextSlashIndex: usize = switch (OS) {
             .windows => block: {
-                const slashIndex = findStrScalar(path, '/');
-                const backSlashIndex = findStrScalar(path, '\\');
+                var pathIndex: usize = 0;
 
-                if (slashIndex == null and backSlashIndex == null) return null;
+                while (pathIndex < path.len and
+                    path[pathIndex] != '/' and path[pathIndex] != '\\') pathIndex += 1;
 
-                break :block @min(findStrScalar(path, '\\'), findStrScalar(path, '/'));
+                if (pathIndex == path.len) {
+                    self.path.len = 0;
+                    return path[0..];
+                }
+
+                break :block pathIndex;
             },
-            else => findStrScalar(path, '/') orelse return null,
+            else => block: {
+                var pathIndex: usize = 0;
+
+                while (pathIndex < path.len and path[pathIndex] != '/') pathIndex += 1;
+
+                if (pathIndex == path.len) {
+                    self.path.len = 0;
+                    return path[0..];
+                }
+
+                break :block pathIndex;
+            },
         };
 
+        // TODO: combine platforms' logic to a single code
         self.path = path[nextSlashIndex + 1 ..];
         return path[0..nextSlashIndex];
     }
 };
+
+test {
+    testing.refAllDecls(PathIterator);
+}
 
 pub inline fn createDir(io: Io, dir: Dir, path: []const u8) !void {
     return dir.createDir(io, path, Dir.Permissions.default_dir);
