@@ -15,6 +15,11 @@ const TestUtils = @import("tests/TestUtils.zig");
 const OS = builtin.os.tag;
 const MAX_PATH_BYTES = Dir.max_path_bytes;
 
+const HOME_ENV_VAR = switch (OS) {
+    .windows => "%USERPROFILE%",
+    else => "HOME",
+};
+
 pub inline fn findStrScalar(str: []const u8, searchValue: u8) ?usize {
     return mem.findScalarPos(u8, str, 0, searchValue);
 }
@@ -23,44 +28,16 @@ pub inline fn eqlStr(a: []const u8, b: []const u8) bool {
     return mem.eql(u8, a, b);
 }
 
-pub const UserPathError = error{
-    GetUserProfileEnvFail,
-    /// Only on windows.
-    ConvertPathToUtf8Fail,
-    GetHomeEnvFail,
-};
-/// Writes to `buffer` the path to user dir.
-///
-/// `buffer` must have length at list as the max path bytes of system.
-///
-/// Returns a slice of the path in `buffer` or `UserPathError`.
-pub inline fn getUserPath(
-    /// Used to read the user dir path.
-    env: process.Environ,
-    buffer: []u8,
-) UserPathError![]const u8 {
-    switch (OS) {
-        .windows => {
-            const utf16Path = env.getWindows(
-                unicode.utf8ToUtf16LeStringLiteral("%USERPROFILE%"),
-            ) orelse return UserPathError.GetUserProfileEnvFail;
-
-            const utf8PathLen = unicode.utf16LeToUtf8(
-                buffer,
-                utf16Path,
-            ) catch return UserPathError.ConvertPathToUtf8Fail;
-
-            return buffer[0..utf8PathLen];
-        },
-        else => {
-            const path = env.getPosix("HOME") orelse return UserPathError.GetHomeEnvFail;
-
-            const bufferPath = buffer[0..path.len];
-            @memcpy(bufferPath, path);
-
-            return bufferPath;
-        },
-    }
+/// Returns path to the user dir (home)
+/// encoded in UTF-16 on windows and in UTF-8 on other platforms.
+pub inline fn getHomeEnv(env: Environ) ?[]const switch (OS) {
+    .windows => u16,
+    else => u8,
+} {
+    return switch (OS) {
+        .windows => env.getWindows(HOME_ENV_VAR),
+        else => env.getPosix(HOME_ENV_VAR),
+    };
 }
 
 /// `path` must have length at least 1.
@@ -81,6 +58,10 @@ pub const PathBuilder = struct {
     ///
     /// Never includes trailing slash.
     end: usize,
+
+    pub inline fn init() @This() {
+        return .{ .buffer = undefined, .end = 0 };
+    }
 
     /// Copies `path` to initialized `buffer`.
     ///
