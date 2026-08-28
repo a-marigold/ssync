@@ -147,6 +147,23 @@ pub const PathBuilder = struct {
         return buffer[0..newEnd];
     }
 
+    test "`initPath` copies `path` to `buffer`, invalidates `end` and omits trailing slash" {
+        {
+            const somePath = "/home/bar";
+
+            const pathBuilder1: PathBuilder = .initPath(somePath);
+            try testing.expectEqualStrings(somePath, pathBuilder1.buffer[0..pathBuilder1.end]);
+
+            const somePathWithSlash = somePath ++ "/";
+
+            const pathBuilder2: PathBuilder = .initPath(somePathWithSlash);
+            try testing.expectEqualStrings(
+                somePath,
+                pathBuilder2.buffer[0..pathBuilder2.end],
+            );
+        }
+    }
+
     test "`append` and `appendLiteral` join `relPath` with the current buffer path and invalidates `end`" {
         const startPath = "/home/u";
 
