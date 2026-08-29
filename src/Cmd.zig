@@ -20,6 +20,7 @@ const File = Io.File;
 const process = std.process;
 const Environ = process.Environ;
 const unicode = std.unicode;
+const testing = std.testing;
 const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
 const SsyncConfig = @import("SsyncConfig.zig");
@@ -68,7 +69,7 @@ pub const Errors = struct {
             CheckRootDestError.DestPathAbsolute => Errors.ROOT_DEST_PATH_ABSOLUTE,
             CheckRootDestError.DestPathEscapesRoot => Errors.ROOT_DEST_PATH_ESCAPES,
             CheckRootNameError.RootNameTooLong => Errors.ROOT_NAME_TOO_LONG,
-            CheckRootNameError.RootNameHasSlash => Errors.ROOT_NAME_HAS_SLASH,
+            CheckRootNameError.RootNameHasPathSep => Errors.ROOT_NAME_HAS_PATH_SEP,
             AddError.CannotReplaceRoot => Errors.CANNOT_REPLACE_ROOT,
             AddError.DestAlreadyExist => Errors.ROOT_DEST_ALREADY_EXIST,
             AddError.DestComponentNotDir => Errors.DEST_COMPONENT_NOT_DIR,
@@ -98,7 +99,7 @@ pub const Errors = struct {
     pub const UNRECONGNIZED_CMD = PREFIX ++ "Unrecongnized command. Try '--help'";
 
     pub const ROOT_NAME_TOO_LONG = PREFIX ++ "The root name is too long";
-    pub const ROOT_NAME_HAS_SLASH = PREFIX ++ "Root names cannot have slashes";
+    pub const ROOT_NAME_HAS_PATH_SEP = PREFIX ++ "Root names cannot have path separators";
 
     pub const ROOT_DEST_PATH_ABSOLUTE = PREFIX ++ "Root dest path cannot be absolute";
     pub const ROOT_DEST_PATH_ESCAPES = PREFIX ++ "'dest' path points out the root";
@@ -707,23 +708,44 @@ fn deleteDirWithConfirm(
     };
 }
 
-const CheckRootNameError = error{
-    RootNameTooLong,
-    RootNameHasSlash,
-};
+const CheckRootNameError = error{ RootNameTooLong, RootNameHasPathSep };
 /// Root names cannot be longer than `MAX_ROOT_NAME_BYTES` and cannot platform-specific path separators.
 fn checkRootName(name: []const u8) CheckRootNameError!void {
     if (name.len > MAX_ROOT_NAME_BYTES) return CheckRootNameError.RootNameTooLong;
 
     var nameIndex: usize = 0;
     while (nameIndex < name.len) : (nameIndex += 1)
-        if (Utils.isPathSep(name[nameIndex])) return CheckRootNameError.RootNameHasSlash;
+        if (Utils.isPathSep(name[nameIndex])) return CheckRootNameError.RootNameHasPathSep;
 }
 
-const CheckRootDestError = error{
-    DestPathAbsolute,
-    DestPathEscapesRoot,
-};
+test "`checkRootName` returns `RootNameTooLong` error if the name is too long" {
+    var name: [MAX_ROOT_NAME_BYTES + 6]u8 = undefined;
+    @memset(&name, 'a'); // Emulate a name instead of `undefined` for safety
+
+    try testing.expectError(
+        CheckRootNameError.RootNameTooLong,
+        checkRootName(&name),
+    );
+}
+test "`checkRootName` returns `RootName" {
+    var name: [MAX_ROOT_NAME_BYTES]u8 = undefined;
+    @memset(&name, 'a');
+
+    name[@divFloor(MAX_ROOT_NAME_BYTES, 2)] = '/';
+
+    try testing.expectError(
+        CheckRootNameError.RootNameHasPathSep,
+        checkRootName(&name),
+    );
+}
+test "`checkRootName` returns nothing on success" {
+    var name: [MAX_ROOT_NAME_BYTES]u8 = undefined;
+    @memset(&name, 'a');
+
+    try checkRootName(&name);
+}
+
+const CheckRootDestError = error{ DestPathAbsolute, DestPathEscapesRoot };
 /// Checks validity of `destPath` that is relative to a root.
 ///
 /// After calling this function, path to the root and `destPath` can be safely joined.
