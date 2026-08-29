@@ -44,7 +44,14 @@ pub inline fn getHomeEnv(env: Environ) ?[]const switch (OS) {
 pub fn isPathAbs(path: []const u8) bool {
     return switch (OS) {
         .windows => Dir.path.isAbsoluteWindows(path),
-        else => path[0] == '/',
+        else => isPathSep(path[0]),
+    };
+}
+
+pub inline fn isPathSep(char: u8) bool {
+    return switch (OS) {
+        .windows => char == '/' or char == '\\',
+        else => char == '/',
     };
 }
 
@@ -71,11 +78,7 @@ pub const PathBuilder = struct {
         @memcpy(buffer[0..path.len], path);
 
         // Omit trailing slash
-        const lastPathChar = path[path.len - 1];
-        const end = path.len - switch (OS) {
-            .windows => @intFromBool(lastPathChar == '/' or lastPathChar == '\\'),
-            else => @intFromBool(lastPathChar == '/'),
-        };
+        const end = path.len - @intFromBool(isPathSep(path[path.len - 1]));
 
         return .{ .buffer = buffer, .end = end };
     }
@@ -95,6 +98,7 @@ pub const PathBuilder = struct {
 
         var newEnd: usize = self.end;
         defer self.end = newEnd;
+
         if (newEnd + relPath.len > buffer.len) return AppendError.OutOfBuffer;
 
         buffer[newEnd] = '/';
@@ -104,11 +108,7 @@ pub const PathBuilder = struct {
         newEnd += relPath.len;
 
         // Omit trailing slash
-        const lastPathChar = relPath[relPath.len - 1];
-        newEnd -= switch (OS) {
-            .windows => @intFromBool(lastPathChar == '/' or lastPathChar == '\\'),
-            else => @intFromBool(lastPathChar == '/'),
-        };
+        newEnd -= @intFromBool(isPathSep(relPath[relPath.len - 1]));
 
         return buffer[0..newEnd];
     }
@@ -119,19 +119,8 @@ pub const PathBuilder = struct {
     /// isn't absolute and doesn't end with a slash.
     pub inline fn appendLiteral(self: *@This(), comptime literalPath: []const u8) []const u8 {
         comptime {
-            const firstPathChar = literalPath[0];
-            const lastPathChar = literalPath[literalPath.len - 1];
-
-            switch (OS) {
-                .windows => {
-                    assert(firstPathChar != '/' and firstPathChar != '\\');
-                    assert(lastPathChar != '/' and lastPathChar != '\\');
-                },
-                else => {
-                    assert(firstPathChar != '/');
-                    assert(lastPathChar != '/');
-                },
-            }
+            assert(!isPathSep(literalPath[0]));
+            assert(!isPathSep(literalPath[literalPath.len - 1]));
         }
 
         const buffer = @constCast(&self.buffer);
@@ -249,12 +238,7 @@ pub const PathIterator = struct {
 
         var pathIndex: usize = 0;
 
-        while (pathIndex < path.len) : (pathIndex += 1) {
-            const char = path[pathIndex];
-
-            if (char == '/') break;
-            if ((comptime OS == .windows) and char == '\\') break;
-        }
+        while (pathIndex < path.len and !isPathSep(path[pathIndex])) pathIndex += 1;
 
         if (pathIndex == path.len) {
             self.path.len = 0;

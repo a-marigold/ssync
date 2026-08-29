@@ -711,18 +711,13 @@ const CheckRootNameError = error{
     RootNameTooLong,
     RootNameHasSlash,
 };
-/// Root names cannot be longer than `MAX_ROOT_NAME_BYTES` and cannot include slashes (path separators).
+/// Root names cannot be longer than `MAX_ROOT_NAME_BYTES` and cannot platform-specific path separators.
 fn checkRootName(name: []const u8) CheckRootNameError!void {
-    if (name.len > MAX_ROOT_NAME_BYTES) {
-        return CheckRootNameError.RootNameTooLong;
-    }
+    if (name.len > MAX_ROOT_NAME_BYTES) return CheckRootNameError.RootNameTooLong;
 
-    if (Utils.findStrScalar(
-        name,
-        '/',
-    ) != null or Utils.findStrScalar(name, '\\') != null) {
-        return CheckRootNameError.RootNameHasSlash;
-    }
+    var nameIndex: usize = 0;
+    while (nameIndex < name.len) : (nameIndex += 1)
+        if (Utils.isPathSep(name[nameIndex])) return CheckRootNameError.RootNameHasSlash;
 }
 
 const CheckRootDestError = error{
