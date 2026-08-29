@@ -421,7 +421,7 @@ test "'confirm' returns appropriate bool for 'y' and 'n' chars from 'stdin'" {
 test "'confirm' is case-sensitive and returns 'InvalidChar' error if 'stdin' consist of invalid char" {
     inline for (.{ "INVALID", "Y", "N" }) |invalidInput| {
         const stdin = block: {
-            var buffer: [10]u8 = undefined;
+            var buffer: [invalidInput.len]u8 = undefined;
             var reader = testing.Reader.init(
                 &buffer,
                 &.{.{ .buffer = invalidInput }},
@@ -446,10 +446,7 @@ test "'confirm' is case-sensitive and returns 'InvalidChar' error if 'stdin' con
     }
 }
 test "'confirm' returns 'ReadFail' error if reading from 'stdin' failed" {
-    var failingStdin = block: {
-        var buffer: [1]u8 = undefined;
-        break :block TestUtils.mockFailingIoReader(&buffer);
-    };
+    var failingStdin = TestUtils.mockFailingIoReader();
 
     const queryStr = "q";
 

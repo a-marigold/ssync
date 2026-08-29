@@ -7,9 +7,11 @@ comptime {
 }
 
 /// `buffer` must have length at least 1 'cause some functions of the reader can cause a panic.
-pub fn mockFailingIoReader(buffer: []u8) Io.Reader {
+pub fn mockFailingIoReader() Io.Reader {
+    var buffer: [10]u8 = undefined;
+
     var reader: Io.Reader = .failing;
-    reader.buffer = buffer;
+    reader.buffer = &buffer;
 
     return reader;
 }

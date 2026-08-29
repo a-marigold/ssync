@@ -21,6 +21,7 @@ const process = std.process;
 const Environ = process.Environ;
 const unicode = std.unicode;
 const testing = std.testing;
+const TestUtils = @import("tests/TestUtils.zig");
 const builtin = @import("builtin");
 const Utils = @import("Utils.zig");
 const SsyncConfig = @import("SsyncConfig.zig");
@@ -213,7 +214,6 @@ const List = struct {
         return stdout.flush();
     }
 };
-
 pub const list = List.list;
 
 const Config = struct {
@@ -467,6 +467,7 @@ const Delete = struct {
         if (destPath == null) {
             return deleteDirWithConfirm(
                 io,
+                cwd,
                 stdin,
                 stdout,
                 rootPath,
@@ -492,6 +493,7 @@ const Delete = struct {
             .file => cwd.deleteFile(io, destAbsPath) catch Error.DeleteDestFail,
             .directory => deleteDirWithConfirm(
                 io,
+                cwd,
                 stdin,
                 stdout,
                 destAbsPath,
@@ -597,34 +599,31 @@ const Update = struct {
     /// If the root is not empty, uses `stdin` and `stdout` to confirm deletion.
     inline fn replaceRoot(
         io: Io,
+        dir: Dir,
         stdin: *Io.Reader,
         stdout: *Io.Writer,
         rootPath: []const u8,
         srcAbsPath: []const u8,
     ) ReplaceRootError!void {
-        const cwd = Dir.cwd();
-
         try deleteDirWithConfirm(
             io,
+            dir,
             stdin,
             stdout,
             rootPath,
             .{"Root is not empty. Delete it [y/n]? "},
         );
-
-        const srcFileKind = (cwd.statFile(
+        const srcFileKind = (dir.statFile(
             io,
             srcAbsPath,
             .{ .follow_symlinks = true },
         ) catch return ReplaceRootError.StatSrcFail).kind;
 
-        if (srcFileKind != .directory) {
-            return ReplaceRootError.SrcNotDir;
-        }
+        if (srcFileKind != .directory) return ReplaceRootError.SrcNotDir;
 
         // TODO: add 'stdout' writing on success
         // `Utils.symLink` isn't used not to do `stat` on windows twice
-        return cwd.symLink(
+        return dir.symLink(
             io,
             srcAbsPath,
             rootPath,
@@ -674,15 +673,14 @@ const DeleteDirWithConfirmError = error{
 /// Uses `stdin` and `stdout` for confirmation.
 fn deleteDirWithConfirm(
     io: Io,
+    dir: Dir,
     stdin: *Io.Reader,
     stdout: *Io.Writer,
     dirPath: []const u8,
     /// To be passed to `Utils.confirm`.
     confirmQuery: anytype,
 ) DeleteDirWithConfirmError!void {
-    const cwd = Dir.cwd();
-
-    cwd.deleteDir(io, dirPath) catch |err| switch (err) {
+    dir.deleteDir(io, dirPath) catch |err| switch (err) {
         Dir.DeleteDirError.DirNotEmpty => {
             while (true) {
                 const isConfirmed = Utils.confirm(
@@ -690,12 +688,12 @@ fn deleteDirWithConfirm(
                     stdout,
                     confirmQuery,
                 ) catch |confirmErr| switch (confirmErr) {
-                    Utils.ConfirmError.UnknownChar => continue,
+                    Utils.ConfirmError.InvalidChar => continue,
                     else => return DeleteDirWithConfirmError.ConfirmationFail,
                 };
 
                 if (isConfirmed)
-                    return cwd.deleteTree(
+                    return dir.deleteTree(
                         io,
                         dirPath,
                     ) catch DeleteDirWithConfirmError.DeleteFail
