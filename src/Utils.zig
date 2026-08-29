@@ -488,7 +488,7 @@ test "'confirm' writes 'query' to 'stdout'" {
 
     _ = try confirm(stdin, stdout, query);
 
-    try testing.expectEqualStrings(queryStr, stdout.writer.buffered());
+    try testing.expectEqualStrings(queryStr, stdout.buffered());
 }
 test "'confirm' returns 'WriteFail' error if writing to stdout failed" {
     const stdin = block: {

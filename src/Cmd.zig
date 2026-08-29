@@ -720,16 +720,16 @@ fn checkRootName(name: []const u8) CheckRootNameError!void {
 
 test "`checkRootName` returns `RootNameTooLong` error if the name is too long" {
     var name: [MAX_ROOT_NAME_BYTES + 6]u8 = undefined;
-    @memset(&name, 'a'); // Emulate a name instead of `undefined` for safety
+    @memset(&name, 'a');
 
     try testing.expectError(
         CheckRootNameError.RootNameTooLong,
         checkRootName(&name),
     );
 }
-test "`checkRootName` returns `RootName" {
+test "`checkRootName` returns `RootNameHasPathSep` error if the name has platform-path seps" {
     var name: [MAX_ROOT_NAME_BYTES]u8 = undefined;
-    @memset(&name, 'a');
+    @memset(&name, 'b');
 
     name[@divFloor(MAX_ROOT_NAME_BYTES, 2)] = '/';
 
@@ -740,7 +740,7 @@ test "`checkRootName` returns `RootName" {
 }
 test "`checkRootName` returns nothing on success" {
     var name: [MAX_ROOT_NAME_BYTES]u8 = undefined;
-    @memset(&name, 'a');
+    @memset(&name, 'c');
 
     try checkRootName(&name);
 }
@@ -773,6 +773,10 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
         1 => componentsCount += @intFromBool(component[0] != '.'),
         2 => {
             const isParentDir = component[0] == '.' and component[1] == '.';
+
+            // If it is a parent dir, decrement the count and don't increment.
+            // Otherwise, don't decrement the count but increment
+
             componentsCount -= @intFromBool(isParentDir);
             componentsCount += @intFromBool(!isParentDir);
         },
@@ -780,6 +784,33 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
     };
 
     if (componentsCount < 0) return CheckRootDestError.DestPathEscapesRoot;
+}
+test "`checkRootDest` returns `DestPathAbsolute` error if the path is absolute" {
+    const destAbsPath = "/evil/path/";
+
+    try testing.expectError(
+        CheckRootDestError.DestPathAbsolute,
+        checkRootDest(destAbsPath),
+    );
+}
+test "`checkRootDest` returns `DestPathEscapesRoot` error if the path escapes root" {
+    inline for (.{
+        "..",
+        "../",
+        "dir/../../",
+        "./evil/../path/../../",
+    }) |escapingPath|
+        try testing.expectError(
+            CheckRootDestError.DestPathEscapesRoot,
+            checkRootDest(escapingPath),
+        );
+}
+test "`checkRootDest` returns nothing on success" {
+    inline for (.{
+        "./some/path",
+        "./not/../escaping",
+        "just/../root/..",
+    }) |validPath| try checkRootDest(validPath);
 }
 
 // TODO: 'follow symlinks' flag for 'add' and 'update' commands.
