@@ -386,62 +386,50 @@ pub inline fn confirm(
     };
 }
 
-// TODO: add case-sesitivity test
-
 test "'confirm' returns appropriate bool for 'y' and 'n' chars from 'stdin'" {
-    const Case = struct { char: u8, result: bool };
-    inline for (.{
-        Case{ .char = 'y', .result = true },
-        Case{ .char = 'n', .result = false },
+    const Case = struct { input: []const u8, result: bool };
+    inline for ([_]Case{
+        .{ .input = "y", .result = true },
+        .{ .input = "yyy", .result = true },
+
+        .{ .input = "n", .result = false },
+        .{ .input = "nnn", .result = false },
     }) |case| {
-        const stdin = block: {
-            var buffer: [6]u8 = undefined;
-            var reader = testing.Reader.init(
-                &buffer,
-                &.{.{ .buffer = &.{case.char} }},
-            );
-            break :block &reader.interface;
+        const stdin: Io.Reader = block: {
+            var buffer = case.input.*;
+            break :block .fixed(&buffer);
         };
 
         const queryStr = "abc";
         const query = .{queryStr};
 
-        const stdout = block: {
+        const stdout: Io.Writer = block: {
             var buffer: [queryStr.len]u8 = undefined;
-            var writer: Io.Writer = .fixed(&buffer);
-
-            break :block &writer;
+            break :block .fixed(&buffer);
         };
 
-        const result = try confirm(stdin, stdout, query);
-
-        try testing.expect(result == case.result);
+        const result = try confirm(&stdin, &stdout, query);
+        try testing.expectEqual(result, case.result);
     }
 }
 test "'confirm' is case-sensitive and returns 'InvalidChar' error if 'stdin' consist of invalid char" {
-    inline for (.{ "INVALID", "Y", "N" }) |invalidInput| {
-        const stdin = block: {
-            var buffer: [invalidInput.len]u8 = undefined;
-            var reader = testing.Reader.init(
-                &buffer,
-                &.{.{ .buffer = invalidInput }},
-            );
-            break :block &reader.interface;
+    inline for (.{ "INVALID", "Yy", "Nn" }) |invalidInput| {
+        const stdin: Io.Reader = block: {
+            var buffer = invalidInput.*;
+            break :block .fixed(&buffer);
         };
 
         const queryStr = "q";
         const query = .{queryStr};
 
-        const stdout = block: {
+        const stdout: Io.Writer = block: {
             var buffer: [queryStr.len]u8 = undefined;
-            var writer: Io.Writer = .fixed(&buffer);
-
-            break :block &writer;
+            break :block .fixed(&buffer);
         };
 
         try testing.expectError(
             ConfirmError.InvalidChar,
-            confirm(stdin, stdout, query),
+            confirm(&stdin, &stdout, query),
         );
     }
 }
@@ -463,39 +451,32 @@ test "'confirm' returns 'ReadFail' error if reading from 'stdin' failed" {
 }
 
 test "'confirm' writes 'query' to 'stdout'" {
-    const stdin = block: {
-        var buffer: [6]u8 = undefined;
-        var reader = testing.Reader.init(
-            &buffer,
-            &.{.{ .buffer = "n" }},
-        );
-        break :block &reader.interface;
+    const someInput = "yyy";
+
+    const stdin: Io.Reader = block: {
+        var buffer = someInput.*;
+        break :block .fixed(&buffer);
     };
 
     const queryStr = "Hello, World. Goodbye";
-    const query = .{
-        queryStr[0..6],
-        queryStr[6..12],
-        queryStr[12..],
-    };
+    const query =
+        .{ queryStr[0..6], queryStr[6..12], queryStr[12..] };
 
-    const stdout = block: {
+    const stdout: Io.Writer = block: {
         var buffer: [queryStr.len]u8 = undefined;
-        var writer: Io.Writer = Io.Writer.fixed(&buffer);
-        break :block &writer;
+        break :block .fixed(&buffer);
     };
 
-    _ = try confirm(stdin, stdout, query);
+    _ = try confirm(&stdin, &stdout, query);
 
     try testing.expectEqualStrings(queryStr, stdout.buffered());
 }
 test "'confirm' returns 'WriteFail' error if writing to stdout failed" {
-    const stdin = block: {
-        var buffer: [10]u8 = undefined;
-        break :block @constCast(&testing.Reader.init(
-            &buffer,
-            &.{.{ .buffer = "y" }},
-        ).interface);
+    const someInput = "abc";
+
+    const stdin: Io.Reader = block: {
+        var buffer = someInput.*;
+        break :block .fixed(&buffer);
     };
     const queryStr = "q";
     const query = .{queryStr};
@@ -507,7 +488,7 @@ test "'confirm' returns 'WriteFail' error if writing to stdout failed" {
 
     try testing.expectError(
         ConfirmError.WriteFail,
-        confirm(stdin, failingStdout, query),
+        confirm(&stdin, &failingStdout, query),
     );
 }
 
