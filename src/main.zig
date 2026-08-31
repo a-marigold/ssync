@@ -175,3 +175,4 @@ inline fn dispatchCmd(
 inline fn writeErrMsg(stderr: *Io.Writer, comptime msg: []const u8) !void {
     return stderr.writeAll(msg ++ "\n");
 }
+// TODO: fix test errors

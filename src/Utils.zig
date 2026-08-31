@@ -395,15 +395,16 @@ test "'confirm' returns appropriate bool for 'y' and 'n' chars from 'stdin'" {
         .{ .input = "n", .result = false },
         .{ .input = "nnn", .result = false },
     }) |case| {
-        const stdin: Io.Reader = block: {
-            var buffer = case.input.*;
+        var stdin: Io.Reader = block: {
+            var buffer: [10]u8 = undefined;
+            @memcpy(buffer[0..case.input.len], case.input);
             break :block .fixed(&buffer);
         };
 
         const queryStr = "abc";
         const query = .{queryStr};
 
-        const stdout: Io.Writer = block: {
+        var stdout: Io.Writer = block: {
             var buffer: [queryStr.len]u8 = undefined;
             break :block .fixed(&buffer);
         };
@@ -414,7 +415,7 @@ test "'confirm' returns appropriate bool for 'y' and 'n' chars from 'stdin'" {
 }
 test "'confirm' is case-sensitive and returns 'InvalidChar' error if 'stdin' consist of invalid char" {
     inline for (.{ "INVALID", "Yy", "Nn" }) |invalidInput| {
-        const stdin: Io.Reader = block: {
+        var stdin: Io.Reader = block: {
             var buffer = invalidInput.*;
             break :block .fixed(&buffer);
         };
@@ -422,7 +423,7 @@ test "'confirm' is case-sensitive and returns 'InvalidChar' error if 'stdin' con
         const queryStr = "q";
         const query = .{queryStr};
 
-        const stdout: Io.Writer = block: {
+        var stdout: Io.Writer = block: {
             var buffer: [queryStr.len]u8 = undefined;
             break :block .fixed(&buffer);
         };
@@ -453,7 +454,7 @@ test "'confirm' returns 'ReadFail' error if reading from 'stdin' failed" {
 test "'confirm' writes 'query' to 'stdout'" {
     const someInput = "yyy";
 
-    const stdin: Io.Reader = block: {
+    var stdin: Io.Reader = block: {
         var buffer = someInput.*;
         break :block .fixed(&buffer);
     };
@@ -462,7 +463,7 @@ test "'confirm' writes 'query' to 'stdout'" {
     const query =
         .{ queryStr[0..6], queryStr[6..12], queryStr[12..] };
 
-    const stdout: Io.Writer = block: {
+    var stdout: Io.Writer = block: {
         var buffer: [queryStr.len]u8 = undefined;
         break :block .fixed(&buffer);
     };

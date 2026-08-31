@@ -320,7 +320,7 @@ const Create = struct {
             }
         };
 
-        try stdout.writeAll("Root was successfully created\n");
+        try stdout.writeAll("Created '", rootName, "' root\n");
         return stdout.flush();
     }
 };
@@ -418,7 +418,10 @@ const Add = struct {
                             destAbsPath,
                         ) catch return Error.SymLinkFail;
 
-                        try Utils.writeArray(stdout, .{ "Successfully added ", srcPath, " to the dest in root" });
+                        try Utils.writeArray(
+                            stdout,
+                            .{ "Added ", srcPath, " to the dest in the root\n" },
+                        );
                         return stdout.flush();
                     }
                     Utils.createDir(io, cwd, currentAbsPath) catch |dirErr| switch (dirErr) {
@@ -428,11 +431,14 @@ const Add = struct {
                     };
                 }
             },
+
             else => return Error.SymLinkFail,
         };
 
-        try Utils.writeArray(stdout, .{ "Successfully added ", srcPath, " to the dest in root" });
-
+        try Utils.writeArray(
+            stdout,
+            .{ "Added ", srcPath, " to the dest in the root\n" },
+        );
         return stdout.flush();
     }
 };
@@ -474,7 +480,7 @@ const Delete = struct {
         const cwd = Dir.cwd();
 
         if (destPath == null) {
-            return deleteDirWithConfirm(
+            try deleteDirWithConfirm(
                 io,
                 cwd,
                 stdin,
@@ -485,6 +491,9 @@ const Delete = struct {
                 DeleteDirWithConfirmError.DeleteFail => Error.DeleteRootFail,
                 else => err,
             };
+
+            try stdout.writeAll("Deleted the root");
+            return stdout.flush();
         }
 
         const destAbsPath = block: {
@@ -498,7 +507,7 @@ const Delete = struct {
             .{ .follow_symlinks = true },
         ) catch return Error.DestNotExist).kind;
 
-        return switch (fileKind) {
+        switch (fileKind) {
             .file => cwd.deleteFile(io, destAbsPath) catch Error.DeleteDestFail,
             .directory => deleteDirWithConfirm(
                 io,
@@ -512,7 +521,10 @@ const Delete = struct {
                 else => err,
             },
             else => unreachable,
-        };
+        }
+
+        try Utils.writeArray(stdout, .{ "Deleted '", destPath, "' in the root" });
+        return stdout.flush();
     }
 };
 pub const delete = Delete.delete;
@@ -577,18 +589,22 @@ const Update = struct {
             break :block buffer[0..absPathLen];
         };
 
-        // TODO: add `stdout` writing on success
-        if (destAbsPath.len == rootPath.len) return replaceRoot(
-            io,
-            stdin,
-            stdout,
-            rootPath,
-            srcAbsPath,
-        ) catch |err| switch (err) {
-            ReplaceRootError.SrcNotDir => Error.SrcNotDir,
-            ReplaceRootError.SymLinkFail => Error.SymLinkFail,
-            else => Error.ReplaceRootFail,
-        };
+        if (destAbsPath.len == rootPath.len) {
+            try replaceRoot(
+                io,
+                stdin,
+                stdout,
+                rootPath,
+                srcAbsPath,
+            ) catch |err| switch (err) {
+                ReplaceRootError.SrcNotDir => Error.SrcNotDir,
+                ReplaceRootError.SymLinkFail => Error.SymLinkFail,
+                else => Error.ReplaceRootFail,
+            };
+
+            try stdout.writeAll("Updated the whole root");
+            return stdout.flush();
+        }
 
         Utils.symLink(
             io,
@@ -596,6 +612,12 @@ const Update = struct {
             srcAbsPath,
             destAbsPath,
         ) catch return Error.SymLinkFail;
+
+        try Utils.writeArray(
+            stdout,
+            .{ "Updated'", destPath, "' in the root" },
+        );
+        return stdout.flush();
     }
 
     const ReplaceRootError = error{
@@ -629,8 +651,6 @@ const Update = struct {
         ) catch return ReplaceRootError.StatSrcFail).kind;
 
         if (srcFileKind != .directory) return ReplaceRootError.SrcNotDir;
-
-        // TODO: add 'stdout' writing on success
 
         // `Utils.symLink` isn't used not to do `stat` on windows twice
         return dir.symLink(
@@ -863,8 +883,8 @@ test "`deleteDirWithConfirm` continues confirming if `stdin` has invalid chars" 
     const rootDir = tmpDir.dir;
 
     const nonEmptyDirPath = "baz";
-    rootDir.createDir(io, nonEmptyDirPath, Dir.Permissions.default_dir);
-    rootDir.createFile(io, nonEmptyDirPath ++ "/foo", .{});
+    try rootDir.createDir(io, nonEmptyDirPath, Dir.Permissions.default_dir);
+    try rootDir.createFile(io, nonEmptyDirPath ++ "/foo", .{});
 
     try deleteDirWithConfirm(
         io,
@@ -895,8 +915,8 @@ test "`deleteDirWithConfirm` returns `FailToConfirm` error if `stdin` or `stdout
 
     const noneEmptyDirPath = "somedir16";
 
-    rootDir.createDir(io, noneEmptyDirPath, Dir.permissions.default_dir);
-    rootDir.createFile(io, noneEmptyDirPath ++ "/somefile", .{});
+    try rootDir.createDir(io, noneEmptyDirPath, Dir.permissions.default_dir);
+    try rootDir.createFile(io, noneEmptyDirPath ++ "/somefile", .{});
 
     try testing.expectError(
         DeleteDirWithConfirmError.FailToConfirm,
