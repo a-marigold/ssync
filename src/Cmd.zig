@@ -755,6 +755,153 @@ test "`deleteDirWithConfirm` returns `DirNotFound` if the dir is not found" {
     );
 }
 
+test "`deleteDirWithConfirm` deletes the dir recursively if `stdin` returns `y` char" {
+    const yesInput = "y";
+
+    const stdin: Io.Reader = block: {
+        var buffer = yesInput.*;
+        break :block .fixed(&buffer);
+    };
+
+    const queryStr = "q";
+    const query = .{queryStr};
+
+    const stdout: Io.Writer = block: {
+        var buffer: [queryStr.len]u8 = undefined;
+        break :block .fixed(&buffer);
+    };
+
+    const io = testing.io;
+
+    var tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    const rootDir = tmpDir.dir;
+
+    const nonEmptyDirPath = "foobarbaz";
+    rootDir.createDir(io, nonEmptyDirPath, Dir.permissions.default_dir);
+    rootDir.createFile(io, nonEmptyDirPath ++ "/somefile", .{});
+
+    try deleteDirWithConfirm(
+        io,
+        rootDir,
+        stdin,
+        stdout,
+        nonEmptyDirPath,
+        query,
+    );
+    try TestUtils.expectFileNotExist(io, rootDir, nonEmptyDirPath);
+}
+test "`deleteDirWithConfirm` does nothing if the dir isn't empty and `stdin` returns `n` char" {
+    const yesInput = "y";
+
+    const stdin: Io.Reader = block: {
+        var buffer = yesInput.*;
+        break :block .fixed(&buffer);
+    };
+
+    const queryStr = "q";
+    const query = .{queryStr};
+
+    const stdout: Io.Writer = block: {
+        var buffer: [queryStr.len]u8 = undefined;
+        break :block .fixed(&buffer);
+    };
+
+    const io = testing.io;
+
+    const tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    const rootDir = tmpDir.dir;
+
+    const nonEmptyDirPath = "qux";
+    try rootDir.createDir(io, nonEmptyDirPath, Dir.permissions.default_dir);
+
+    try deleteDirWithConfirm(
+        io,
+        rootDir,
+        &stdin,
+        &stdout,
+        nonEmptyDirPath,
+        query,
+    );
+    try TestUtils.expectFileExist(io, rootDir, nonEmptyDirPath);
+}
+test "`deleteDirWithConfirm` continues confirming if `stdin` has invalid chars" {
+    const repetitions = 3;
+
+    const invalidInput: *const [repetitions]u8 = "aaa";
+
+    const invalidStdin: Io.Reader = block: {
+        var buffer = invalidInput.*;
+        break :block .fixed(&buffer);
+    };
+
+    const queryStr = "q";
+    const query = .{queryStr};
+
+    const stdout: Io.Writer = block: {
+        var buffer: [queryStr.len * repetitions]u8 = undefined;
+        break :block .fixed(&buffer);
+    };
+
+    const io = testing.io;
+
+    var tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    const rootDir = tmpDir.dir;
+
+    const nonEmptyDirPath = "baz";
+    rootDir.createDir(io, nonEmptyDirPath, Dir.Permissions.default_dir);
+    rootDir.createFile(io, nonEmptyDirPath ++ "/foo", .{});
+
+    try deleteDirWithConfirm(
+        io,
+        rootDir,
+        &invalidStdin,
+        &stdout,
+        nonEmptyDirPath,
+        query,
+    );
+
+    const expectedStdoutData = block: {
+        var data: [queryStr.len * repetitions]u8 = undefined;
+        inline for (0..repetitions) |index| data[index] = queryStr;
+        break :block data;
+    };
+    try testing.expectEqualStrings(expectedStdoutData, stdout.buffered());
+}
+test "`deleteDirWithConfirm` returns `FailToConfirm` error if `stdin` or `stdout` fails" {
+    var failingStdin = TestUtils.mockFailingIoReader();
+    var failingStdout = TestUtils.mockFailingIoWriter();
+
+    const io = testing.io;
+
+    var tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    const rootDir = tmpDir.dir;
+
+    const noneEmptyDirPath = "somedir16";
+
+    rootDir.createDir(io, noneEmptyDirPath, Dir.permissions.default_dir);
+    rootDir.createFile(io, noneEmptyDirPath ++ "/somefile", .{});
+
+    try testing.expectError(
+        DeleteDirWithConfirmError.FailToConfirm,
+        deleteDirWithConfirm(
+            io,
+            rootDir,
+            &failingStdin,
+            &failingStdout,
+            noneEmptyDirPath,
+            .{"q"},
+        ),
+    );
+}
+
 const CheckRootNameError = error{ RootNameTooLong, RootNameHasPathSep };
 /// Root names cannot be longer than `MAX_ROOT_NAME_BYTES` and cannot platform-specific path separators.
 fn checkRootName(name: []const u8) CheckRootNameError!void {

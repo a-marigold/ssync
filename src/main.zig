@@ -112,6 +112,7 @@ inline fn dispatchCmd(
         const deleteArgs: Cmd.DeleteArgs = .{
             .root = args.next() orelse {
                 try writeErrMsg(stderr, Errors.ARG_EXPECTED("root"));
+
                 return .InvalidArg;
             },
             .dest = args.next(),
