@@ -622,6 +622,7 @@ const Update = struct {
         if (srcFileKind != .directory) return ReplaceRootError.SrcNotDir;
 
         // TODO: add 'stdout' writing on success
+
         // `Utils.symLink` isn't used not to do `stat` on windows twice
         return dir.symLink(
             io,
@@ -662,15 +663,13 @@ inline fn initUserPathBuilder(env: Environ) UserPathError!PathBuilder {
     }
 }
 
-const DeleteDirWithConfirmError = error{
-    DirNotFound,
-    DeleteFail,
-    ConfirmationFail,
-};
-/// Deletes dir at `dirPath`.
-/// If the dir is not empty, confirms to delete it recursively.
+const DeleteDirWithConfirmError = error{ DirNotFound, DeleteFail, FailToConfirm };
+/// Deletes the dir at `dirPath`, that is relative to `dir` argument.
 ///
-/// Uses `stdin` and `stdout` for confirmation.
+/// If the dir is not empty, confirms to delete it recursively via `stdin` and `stdout`.
+///
+/// If `stdin` returned `y` deletes the dir completely,
+/// if `stdin` returned `n`, does nothing.
 fn deleteDirWithConfirm(
     io: Io,
     dir: Dir,
@@ -689,7 +688,7 @@ fn deleteDirWithConfirm(
                     confirmQuery,
                 ) catch |confirmErr| switch (confirmErr) {
                     Utils.ConfirmError.InvalidChar => continue,
-                    else => return DeleteDirWithConfirmError.ConfirmationFail,
+                    else => return DeleteDirWithConfirmError.FailToConfirm,
                 };
 
                 if (isConfirmed)
@@ -704,6 +703,56 @@ fn deleteDirWithConfirm(
         Dir.DeleteDirError.FileNotFound => return DeleteDirWithConfirmError.DirNotFound,
         else => return DeleteDirWithConfirmError.DeleteFail,
     };
+}
+test "`deleteDirWithConfirm` simply deletes the dir without confirmation if it's empty" {
+    var failingStdin = TestUtils.mockFailingIoReader();
+    var failingStdout = TestUtils.mockFailingIoWriter();
+
+    const io = testing.io;
+
+    var tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    const rootDir = tmpDir.dir;
+
+    const someDirPath = "someDir123";
+
+    try rootDir.createDir(io, someDirPath, .{});
+
+    try deleteDirWithConfirm(
+        io,
+        rootDir,
+        &failingStdin,
+        &failingStdout,
+        someDirPath,
+        .{"some query"},
+    );
+    try TestUtils.expectDirNotExist(io, rootDir, someDirPath);
+}
+test "`deleteDirWithConfirm` returns `DirNotFound` if the dir is not found" {
+    var failingStdin = TestUtils.mockFailingIoReader();
+    var failingStdout = TestUtils.mockFailingIoWriter();
+
+    const io = testing.io;
+
+    var tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    const rootDir = tmpDir.dir;
+
+    const nonExistingPath = "idonotexist";
+
+    try testing.expectError(
+        DeleteDirWithConfirmError.DirNotFound,
+        deleteDirWithConfirm(
+            io,
+            rootDir,
+            &failingStdin,
+            &failingStdout,
+            nonExistingPath,
+            .{"some query"},
+        ),
+    );
 }
 
 const CheckRootNameError = error{ RootNameTooLong, RootNameHasPathSep };
@@ -772,8 +821,8 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
         2 => {
             const isParentDir = component[0] == '.' and component[1] == '.';
 
-            // If it is a parent dir, decrement the count and don't increment.
-            // Otherwise, don't decrement the count but increment
+            // If it's a parent dir, decrement the count and don't increment.
+            // If it'is a plain component, don't decrement the count but increment
 
             componentsCount -= @intFromBool(isParentDir);
             componentsCount += @intFromBool(!isParentDir);
@@ -783,6 +832,7 @@ fn checkRootDest(destPath: []const u8) CheckRootDestError!void {
 
     if (componentsCount < 0) return CheckRootDestError.DestPathEscapesRoot;
 }
+
 test "`checkRootDest` returns `DestPathAbsolute` error if the path is absolute" {
     const destAbsPath = "/evil/path/";
 

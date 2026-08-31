@@ -1,5 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
+const Dir = Io.Dir;
 const builtin = @import("builtin");
 
 comptime {
@@ -19,4 +20,15 @@ pub fn mockFailingIoReader() Io.Reader {
 /// any writing method of `Io.Writer` calls the failing vtable functions.
 pub fn mockFailingIoWriter() Io.Writer {
     return .failing;
+}
+
+pub const ExpectFileExistError = error{DirNotExist};
+pub fn expectFileExist(io: Io, dir: Dir, path: []const u8) ExpectFileExistError!void {
+    dir.statFile(io, path, .{}) catch return ExpectFileExistError.DirNotExist;
+}
+
+pub const ExpectFileNotExistError = error{DirExist};
+pub fn expectFileNotExist(io: Io, dir: Dir, path: []const u8) ExpectFileNotExistError!void {
+    _ = dir.statFile(io, path, .{}) catch return;
+    return ExpectFileNotExistError;
 }
