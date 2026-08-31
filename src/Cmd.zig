@@ -132,28 +132,41 @@ pub const Errors = struct {
 const Help = struct {
     const TEXT =
         \\Commands:
-        \\  list                         Show path to roots and list created roots.
+        \\ list
+        \\   Show the path to roots and list created roots.
         \\
-        \\  config                       Show path to config and create it if doesn't exist.
+        \\ config
+        \\   Create a config if doesn't exist and show the path to it.
         \\
-        \\  create [root]                Create a root.
+        \\ create [root]
+        \\   Create a root.
         \\
-        \\  add [root, src, dest]        'root' is name of a root to copy 'src' file to.
-        \\                               'src' is path to a file in the system which is to be copied to 'dest'.
-        \\                               'dest' is a path relative to 'root' to copy 'src' to.
-        \\                               Not existing components of 'dest' path automatically created.
+        \\ add [root, src, dest,
+        \\      --no-follow-symlinks]
+        \\   'root' is name of a root to copy 'src' file to.
+        \\   'src' is path to a file in the system which is to be copied to 'dest'.
+        \\   'dest' is a path relative to 'root' to copy 'src' to.
+        \\   Not existing components of 'dest' path are automatically created.
+        \\   When '--no-follow-symlinks' is turned on, 
+        \\   the command doesn't follow the symlink of 'dest'.
         \\
-        \\  delete [root, ?dest]         If 'dest' specified, delete the file at 'dest' path in 'root'.
-        \\                               If only 'file' is not specified, delete the whole root (prompt is shown for safety).
+        \\ delete [root, ?dest]
+        \\   If 'dest' specified, delete the file at 'dest' path in 'root'.
+        \\   If only 'file' is not specified, delete the whole root (prompt is shown for safety).
         \\
-        \\  update [root, newSrc, dest]  Make 'dest' in 'root' track 'newSrc' instead of the current.
-        \\                               If 'dest' is like './', replaces the whole root with 'newSrc'
-        \\                               ('newSrc' must be a folder and prompt is shown for safety).
+        \\ update [root, newSrc, dest,
+        \\         --no-follow-symlinks]
+        \\   Make 'dest' in 'root' track 'newSrc' instead of the current.
+        \\   If 'dest' is like './', replaces the whole root with 'newSrc'
+        \\   ('newSrc' must be a folder and prompt is shown for safety).
+        \\   When '--no-follow-symlinks' is turned on,
+        \\   the command doesn't follow the symlink of 'dest'.
         \\
         \\Terms:
-        \\  root  Synchronization root, root folder of data with a similar domain.
-        \\        Used to separate, for example, 'music', 'configs', 'editor' and so on.
-        \\        Roots can be handled differently in handlers, and that is the key purpose of them.
+        \\ root
+        \\   Synchronization root, root folder of data with a similar domain.
+        \\   Used to separate, for example, 'music', 'configs', 'browser' and so on.
+        \\   Roots can be handled differently in handlers, and that is the key purpose of them.
         \\
     ;
 
@@ -727,7 +740,7 @@ test "`deleteDirWithConfirm` simply deletes the dir without confirmation if it's
         someDirPath,
         .{"some query"},
     );
-    try TestUtils.expectDirNotExist(io, rootDir, someDirPath);
+    try TestUtils.expectFileNotExist(io, rootDir, someDirPath);
 }
 test "`deleteDirWithConfirm` returns `DirNotFound` if the dir is not found" {
     var failingStdin = TestUtils.mockFailingIoReader();
