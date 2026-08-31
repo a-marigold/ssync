@@ -141,26 +141,20 @@ const Help = struct {
         \\ create [root]
         \\   Create a root.
         \\
-        \\ add [root, src, dest,
-        \\      --no-follow-symlinks]
+        \\ add [root, src, dest]
         \\   'root' is name of a root to copy 'src' file to.
         \\   'src' is path to a file in the system which is to be copied to 'dest'.
         \\   'dest' is a path relative to 'root' to copy 'src' to.
         \\   Not existing components of 'dest' path are automatically created.
-        \\   When '--no-follow-symlinks' is turned on, 
-        \\   the command doesn't follow the symlink of 'dest'.
         \\
         \\ delete [root, ?dest]
         \\   If 'dest' specified, delete the file at 'dest' path in 'root'.
         \\   If only 'file' is not specified, delete the whole root (prompt is shown for safety).
         \\
-        \\ update [root, newSrc, dest,
-        \\         --no-follow-symlinks]
+        \\ update [root, newSrc, dest]
         \\   Make 'dest' in 'root' track 'newSrc' instead of the current.
         \\   If 'dest' is like './', replaces the whole root with 'newSrc'
         \\   ('newSrc' must be a folder and prompt is shown for safety).
-        \\   When '--no-follow-symlinks' is turned on,
-        \\   the command doesn't follow the symlink of 'dest'.
         \\
         \\Terms:
         \\ root
@@ -209,17 +203,19 @@ const List = struct {
 
         var currentEntry: ?Dir.Entry = try rootsDirEntries.next(io) orelse {
             try stdout.writeAll(noRootCreatedMsg);
+
             return stdout.flush();
         };
 
-        try Utils.writeArray(stdout, .{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" });
+        try Utils.writeArray(
+            stdout,
+            .{ "Roots are located in: ", rootsDirPath, "\n\nCreated roots:\n" },
+        );
 
         while (currentEntry) |entry| : (currentEntry = try rootsDirEntries.next(io)) {
             // On macos and windows roots and config
             // are located in a single dir, so check is it a dir (that is a root)
-            if (OS != .linux) {
-                if (entry.kind != .directory) continue;
-            }
+            if (OS != .linux) if (entry.kind != .directory) continue;
 
             try Utils.writeArray(stdout, .{ "  ", entry.name, "\n" });
         }
@@ -1020,5 +1016,3 @@ test "`checkRootDest` returns nothing on success" {
         "just/../root/..",
     }) |validPath| try checkRootDest(validPath);
 }
-
-// TODO: 'follow symlinks' flag for 'add' and 'update' commands.
